@@ -428,6 +428,9 @@ const (
 	// PrometheusServeAddr IP:Port on which to serve prometheus metrics (pass ":Port" to bind on all interfaces, "" is off)
 	PrometheusServeAddr = "prometheus-serve-addr"
 
+	// ExternalEnvoyProxy defines whether the Envoy is deployed externally in form of a DaemonSet or not.
+	ExternalEnvoyProxy = "external-envoy-proxy"
+
 	// CMDRef is the path to cmdref output directory
 	CMDRef = "cmdref"
 
@@ -1353,6 +1356,7 @@ type DaemonConfig struct {
 	BpfDir              string       // BPF template files directory
 	LibDir              string       // Cilium library files directory
 	RunDir              string       // Cilium runtime directory
+	ExternalEnvoyProxy  bool         // Whether Envoy is deployed as external DaemonSet or not
 	devicesMu           lock.RWMutex // Protects devices
 	devices             []string     // bpf_host device
 	DirectRoutingDevice string       // Direct routing device (used by BPF NodePort and BPF Host Routing)
@@ -3028,6 +3032,7 @@ func (c *DaemonConfig) Populate(vp *viper.Viper) {
 	c.RestoreState = vp.GetBool(Restore)
 	c.RouteMetric = vp.GetInt(RouteMetric)
 	c.RunDir = vp.GetString(StateDir)
+	c.ExternalEnvoyProxy = vp.GetBool(ExternalEnvoyProxy)
 	c.SidecarIstioProxyImage = vp.GetString(SidecarIstioProxyImage)
 	c.UseSingleClusterRoute = vp.GetBool(SingleClusterRouteName)
 	c.SocketPath = vp.GetString(SocketPath)
