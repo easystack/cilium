@@ -11,6 +11,8 @@ operator:
   nodeSelector:
     kubernetes.io/os: linux
     kubernetes.io/hostname: kind-worker
+envoy:
+  enabled: false
 ipam:
   mode: kubernetes
 ipv6:
