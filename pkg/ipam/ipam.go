@@ -135,6 +135,16 @@ func NewIPAM(nodeAddressing types.NodeAddressing, c Configuration, owner Owner, 
 		if c.IPv4Enabled() {
 			ipam.IPv4Allocator = newClusterPoolAllocator(IPv4, c, owner, k8sEventReg, clientset)
 		}
+	case ipamOption.IPAMClusterPoolV2Beta2:
+		log.Info("Initializing ClusterPool v2beta IPAM")
+		manager := newClusterPoolManager(c, k8sEventReg, owner, clientset.CiliumV2().CiliumNodes())
+
+		if c.IPv6Enabled() {
+			ipam.IPv6Allocator = manager.Allocator(IPv6)
+		}
+		if c.IPv4Enabled() {
+			ipam.IPv4Allocator = manager.Allocator(IPv4)
+		}
 	case ipamOption.IPAMCRD, ipamOption.IPAMENI, ipamOption.IPAMAzure, ipamOption.IPAMAlibabaCloud:
 		log.Info("Initializing CRD-based IPAM")
 		if c.IPv6Enabled() {
