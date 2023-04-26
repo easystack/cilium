@@ -26,6 +26,9 @@ const (
 	// IPAMClusterPoolV2 is the value to select cluster pool version 2
 	IPAMClusterPoolV2 = "cluster-pool-v2beta"
 
+	// IPAMClusterPoolV2Beta2 is the value to select cluster pool version 2 beta 2
+	IPAMClusterPoolV2Beta2 = "cluster-pool-v2beta2"
+
 	// IPAMAlibabaCloud is the value to select the AlibabaCloud ENI IPAM plugin for option.IPAM
 	IPAMAlibabaCloud = "alibabacloud"
 
