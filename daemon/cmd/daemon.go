@@ -283,6 +283,9 @@ func (d *Daemon) init() error {
 	return nil
 }
 
+func unusedFunction() {
+}
+
 // createPrefixLengthCounter wraps around the counter library, providing
 // references to prefix lengths that will always be present.
 func createPrefixLengthCounter() *counter.PrefixLengthCounter {
