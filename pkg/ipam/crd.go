@@ -22,6 +22,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 
 	alibabaCloud "github.com/cilium/cilium/pkg/alibabacloud/utils"
+	openStack "github.com/cilium/cilium/pkg/openstack/utils"
 	"github.com/cilium/cilium/pkg/cidr"
 	"github.com/cilium/cilium/pkg/ip"
 	ipamOption "github.com/cilium/cilium/pkg/ipam/option"
@@ -240,6 +241,14 @@ func deriveVpcCIDRs(node *ciliumv2.CiliumNode) (primaryCIDR *cidr.CIDR, secondar
 			return
 		}
 	}
+	if len(node.Status.OpenStack.ENIs) > 0 {
+		c, err := cidr.ParseCIDR(node.Spec.OpenStack.CIDR)
+		if err == nil {
+			primaryCIDR = c
+			return
+		}
+	}
+
 	return
 }
 
@@ -311,7 +320,7 @@ func (n *nodeStore) hasMinimumIPsInPool() (minimumReached bool, required, numAva
 			minimumReached = true
 		}
 
-		if n.conf.IPAMMode() == ipamOption.IPAMENI || n.conf.IPAMMode() == ipamOption.IPAMAzure || n.conf.IPAMMode() == ipamOption.IPAMAlibabaCloud {
+		if n.conf.IPAMMode() == ipamOption.IPAMENI || n.conf.IPAMMode() == ipamOption.IPAMAzure || n.conf.IPAMMode() == ipamOption.IPAMAlibabaCloud || n.conf.IPAMMode() == ipamOption.IPAMOpenStack{
 			if !n.autoDetectIPv4NativeRoutingCIDR() {
 				minimumReached = false
 			}
@@ -339,6 +348,12 @@ func (n *nodeStore) updateLocalNodeResource(node *ciliumv2.CiliumNode) {
 	if n.conf.IPAMMode() == ipamOption.IPAMENI {
 		if err := configureENIDevices(n.ownNode, node, n.mtuConfig); err != nil {
 			log.WithError(err).Errorf("Failed to update routes and rules for ENIs")
+		}
+	}
+
+	if n.conf.IPAMMode() == ipamOption.IPAMOpenStack {
+		if err := configureOpenStackENIs(n.ownNode, node, n.mtuConfig); err != nil {
+			log.WithError(err).Errorf("Failed to configure openstack ENIs")
 		}
 	}
 
@@ -741,6 +756,26 @@ func (a *crdAllocator) buildAllocationResult(ip net.IP, ipInfo *ipamTypes.Alloca
 			return
 		}
 		return nil, fmt.Errorf("unable to find ENI %s", ipInfo.Resource)
+
+	case ipamOption.IPAMOpenStack:
+		for _, eni := range a.store.ownNode.Status.OpenStack.ENIs {
+			if eni.ID == ipInfo.Resource {
+				result.PrimaryMAC = eni.MAC
+				result.CIDRs = []string{eni.Subnet.CIDR}
+				result.CIDRs = append(result.CIDRs, eni.Subnet.CIDR)
+				// Add manually configured Native Routing CIDR
+				if a.conf.GetIPv4NativeRoutingCIDR() != nil {
+					result.CIDRs = append(result.CIDRs, a.conf.GetIPv4NativeRoutingCIDR().String())
+				}
+				if eni.Subnet.CIDR != "" {
+					result.GatewayIP = deriveGatewayIP(eni.Subnet.CIDR, 1)
+				}
+				result.InterfaceNumber = strconv.Itoa(openStack.GetENIIndexFromTags(eni.Tags))
+				return
+			}
+		}
+		return nil, fmt.Errorf("unable to find ENI %s", ipInfo.Resource)
+
 	}
 
 	return

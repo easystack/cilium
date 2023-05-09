@@ -48,6 +48,7 @@ require (
 	github.com/google/gops v0.3.26
 	github.com/google/renameio v1.0.1
 	github.com/google/uuid v1.3.0
+	github.com/gophercloud/gophercloud v1.2.0
 	github.com/gorilla/mux v1.8.0
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0
 	github.com/hashicorp/consul/api v1.18.0

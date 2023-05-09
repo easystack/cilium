@@ -39,6 +39,7 @@ var (
 // info: The interface routing info used to create rules and routes.
 // mtu: The interface MTU.
 func (info *RoutingInfo) Configure(ip net.IP, mtu int, compat bool) error {
+	log.Errorf("############## RoutingInfo is %+v", info)
 	if ip.To4() == nil {
 		log.WithFields(logrus.Fields{
 			"endpointIP": ip,
@@ -56,6 +57,7 @@ func (info *RoutingInfo) Configure(ip net.IP, mtu int, compat bool) error {
 		Mask: net.CIDRMask(32, 32),
 	}
 
+	log.Errorf("############## ip is %+v, ifindex is %d", ip, ifindex)
 	// On ingress, route all traffic to the endpoint IP via the main routing
 	// table. Egress rules are created in a per-ENI routing table.
 	if err := route.ReplaceRule(route.Rule{
@@ -74,6 +76,8 @@ func (info *RoutingInfo) Configure(ip net.IP, mtu int, compat bool) error {
 		egressPriority = linux_defaults.RulePriorityEgressv2
 		tableID = computeTableIDFromIfaceNumber(info.InterfaceNumber)
 	}
+
+	log.Errorf("############## tableID is %d, priority is %d, From is %+v", tableID, egressPriority, ipWithMask)
 
 	// The condition here should mirror the condition in Delete.
 	if info.Masquerade && info.IpamMode == ipamOption.IPAMENI {
@@ -100,6 +104,7 @@ func (info *RoutingInfo) Configure(ip net.IP, mtu int, compat bool) error {
 		}
 	}
 
+	log.Errorf("############## Add two routes ifindex is %d, tableID is %d, info is %+v", ifindex, tableID, info)
 	// Nexthop route to the VPC or subnet gateway
 	//
 	// Note: This is a /32 route to avoid any L2. The endpoint does no L2

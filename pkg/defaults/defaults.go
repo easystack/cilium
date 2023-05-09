@@ -374,7 +374,8 @@ const (
 
 	// IPAMPreAllocation is the default value for
 	// CiliumNode.Spec.IPAM.PreAllocate if no value is set
-	IPAMPreAllocation = 8
+	// (fixme) workaround for easystack neutron
+	IPAMPreAllocation = 5
 
 	// ENIFirstInterfaceIndex is the default value for
 	// CiliumNode.Spec.ENI.FirstInterfaceIndex if no value is set.
