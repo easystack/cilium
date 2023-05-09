@@ -492,6 +492,7 @@ func (n *NodeManager) Resync(ctx context.Context, syncTime time.Time) {
 	sem := semaphore.NewWeighted(n.parallelWorkers)
 
 	for _, node := range n.GetNodesByIPWatermark() {
+		log.Infof("!!!!!!!!!!!!! node details is %+v", node)
 		err := sem.Acquire(ctx, 1)
 		if err != nil {
 			continue

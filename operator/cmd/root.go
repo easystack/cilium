@@ -457,7 +457,7 @@ func (legacy *legacyOnLeader) onStart(_ hive.HookContext) error {
 	log.WithField(logfields.Mode, option.Config.IPAM).Info("Initializing IPAM")
 
 	switch ipamMode := option.Config.IPAM; ipamMode {
-	case ipamOption.IPAMAzure, ipamOption.IPAMENI, ipamOption.IPAMClusterPool, ipamOption.IPAMClusterPoolV2, ipamOption.IPAMAlibabaCloud:
+	case ipamOption.IPAMAzure, ipamOption.IPAMENI, ipamOption.IPAMClusterPool, ipamOption.IPAMClusterPoolV2, ipamOption.IPAMAlibabaCloud, ipamOption.IPAMOpenStack:
 		alloc, providerBuiltin := allocatorProviders[ipamMode]
 		if !providerBuiltin {
 			log.Fatalf("%s allocator is not supported by this version of %s", ipamMode, binaryName)
