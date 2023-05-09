@@ -264,7 +264,8 @@ func (d *Daemon) allocateDatapathIPs(family types.NodeAddressingFamily) (routerI
 
 	if (option.Config.IPAM == ipamOption.IPAMENI ||
 		option.Config.IPAM == ipamOption.IPAMAlibabaCloud ||
-		option.Config.IPAM == ipamOption.IPAMAzure) && result != nil {
+		option.Config.IPAM == ipamOption.IPAMAzure ||
+		option.Config.IPAM == ipamOption.IPAMOpenStack) && result != nil {
 		var routingInfo *linuxrouting.RoutingInfo
 		routingInfo, err = linuxrouting.NewRoutingInfo(result.GatewayIP, result.CIDRs,
 			result.PrimaryMAC, result.InterfaceNumber, option.Config.IPAM,
@@ -302,7 +303,7 @@ func (d *Daemon) allocateHealthIPs() error {
 			// In ENI and AlibabaCloud ENI mode, we require the gateway, CIDRs, and the ENI MAC addr
 			// in order to set up rules and routes on the local node to direct
 			// endpoint traffic out of the ENIs.
-			if option.Config.IPAM == ipamOption.IPAMENI || option.Config.IPAM == ipamOption.IPAMAlibabaCloud {
+			if option.Config.IPAM == ipamOption.IPAMENI || option.Config.IPAM == ipamOption.IPAMAlibabaCloud || option.Config.IPAM == ipamOption.IPAMOpenStack {
 				var err error
 				if d.healthEndpointRouting, err = parseRoutingInfo(result); err != nil {
 					log.WithError(err).Warn("Unable to allocate health information for ENI")
@@ -376,10 +377,11 @@ func (d *Daemon) allocateIngressIPs() error {
 			// In ENI and AlibabaCloud ENI mode, we require the gateway, CIDRs, and the
 			// ENI MAC addr in order to set up rules and routes on the local node to
 			// direct ingress traffic out of the ENIs.
-			if option.Config.IPAM == ipamOption.IPAMENI || option.Config.IPAM == ipamOption.IPAMAlibabaCloud {
+			if option.Config.IPAM == ipamOption.IPAMENI || option.Config.IPAM == ipamOption.IPAMAlibabaCloud || option.Config.IPAM == ipamOption.IPAMOpenStack {
 				if ingressRouting, err := parseRoutingInfo(result); err != nil {
 					log.WithError(err).Warn("Unable to allocate ingress information for ENI")
 				} else {
+					log.Errorf("####################  ipam Configure")
 					if err := ingressRouting.Configure(
 						result.IP,
 						d.mtuConfig.GetDeviceMTU(),

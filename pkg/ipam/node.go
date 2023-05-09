@@ -8,6 +8,7 @@ package ipam
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -607,6 +608,7 @@ func (n *Node) determineMaintenanceAction() (*maintenanceAction, error) {
 	scopedLog := n.logger()
 	stats := n.Stats()
 
+	scopedLog.Infof("######### stats is %+v", stats)
 	// Validate that the node still requires addresses to be released, the
 	// request may have been resolved in the meantime.
 	if n.manager.releaseExcessIPs && stats.ExcessIPs > 0 {
@@ -750,6 +752,10 @@ func (n *Node) handleIPRelease(ctx context.Context, a *maintenanceAction) (insta
 	var ipsToMark []string
 	var ipsToRelease []string
 
+	if a.release != nil {
+		scopedLog.Infof("######### handleIPRelease interface id is %s, pool id is %s, ipsToRelease is %s ", a.release.InterfaceID, a.release.PoolID, strings.Join(a.release.IPsToRelease, ", "))
+	}
+
 	// Update timestamps for IPs from this iteration
 	releaseTS := time.Now()
 	if a.release != nil && a.release.IPsToRelease != nil {
@@ -857,6 +863,7 @@ func (n *Node) handleIPAllocation(ctx context.Context, a *maintenanceAction) (in
 		return false, nil
 	}
 
+	scopedLog.Infof("######## action details is %+v", a.allocation)
 	// Assign needed addresses
 	if a.allocation.AvailableForAllocation > 0 {
 		a.allocation.AvailableForAllocation = math.IntMin(a.allocation.AvailableForAllocation, a.allocation.MaxIPsToAllocate)
@@ -892,6 +899,19 @@ func (n *Node) maintainIPPool(ctx context.Context) (instanceMutated bool, err er
 		n.abortNoLongerExcessIPs(nil)
 		return false, err
 	}
+
+	scopedLog := n.logger()
+	if a != nil {
+		if a.allocation != nil {
+			scopedLog.Infof("########## maintainIPPool allocate is %+v", a.allocation)
+		}
+		if a.release != nil {
+			scopedLog.Infof("########## maintainIPPool  release is %+v", a.release)
+		}
+	} else {
+		scopedLog.Infof("########## maintainIPPool  action is nil")
+	}
+
 
 	// Maintenance request has already been fulfilled
 	if a == nil {
