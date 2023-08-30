@@ -724,7 +724,6 @@ func (n *NodeDiscovery) mutateNodeResource(nodeResource *ciliumv2.CiliumNode) er
 		nodeResource.Spec.InstanceID = nodeInfo.UUID
 		nodeResource.Spec.OpenStack.AvailabilityZone = nodeInfo.AvailabilityZone
 
-		log.Infof("####################### netconfig is %+v, openstack is %+v", n.NetConf, n.NetConf.OpenStack)
 		if c := n.NetConf; c != nil {
 			if len(c.OpenStack.SecurityGroups) > 0 {
 				nodeResource.Spec.OpenStack.SecurityGroups = c.OpenStack.SecurityGroups

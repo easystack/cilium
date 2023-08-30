@@ -615,7 +615,9 @@ func (c *Client) describeNetworkInterfaces() ([]ports.Port, error) {
 func (c *Client) describeVpcs() ([]networks.Network, error) {
 	opts := networks.ListOpts{
 		ProjectID: c.filters[ProjectID],
+		ID: c.filters[NetworkID],
 	}
+
 	pages, _ := networks.List(c.neutronV2, opts).AllPages()
 	allNetworks, _ := networks.ExtractNetworks(pages)
 	return allNetworks, nil
