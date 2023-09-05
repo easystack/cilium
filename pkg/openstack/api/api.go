@@ -592,11 +592,14 @@ func (c *Client) describeNetworkInterfaces() ([]ports.Port, error) {
 	opts := ports.ListOpts{
 		NetworkID: c.filters[NetworkID],
 		ProjectID: c.filters[ProjectID],
-		FixedIPs: []ports.FixedIPOpts{
+	}
+
+	if c.filters[SubnetID] != "" {
+		opts.FixedIPs = []ports.FixedIPOpts{
 			ports.FixedIPOpts{
 				SubnetID: c.filters[SubnetID],
 			},
-		},
+		}
 	}
 
 	err = ports.List(c.neutronV2, opts).EachPage(func(page pagination.Page) (bool, error) {

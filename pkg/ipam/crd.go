@@ -238,10 +238,14 @@ func deriveVpcCIDRs(node *ciliumv2.CiliumNode) (primaryCIDR *cidr.CIDR, secondar
 		}
 	}
 	if len(node.Status.OpenStack.ENIs) > 0 {
-		c, err := cidr.ParseCIDR(node.Spec.OpenStack.CIDR)
-		if err == nil {
-			primaryCIDR = c
-			return
+		// A node belongs to a single VPC so we can pick the first ENI
+		// in the list and derive the VPC CIDR from it.
+		for _, eni := range node.Status.OpenStack.ENIs {
+			c, err := cidr.ParseCIDR(eni.Subnet.CIDR)
+			if err == nil {
+				primaryCIDR = c
+				return
+			}
 		}
 	}
 
