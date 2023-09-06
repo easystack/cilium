@@ -45,7 +45,7 @@ const (
 	PodInterfaceName = "cilium-pod-port"
 
 	VMDeviceOwner  = "compute:"
-	PodDeviceOwner = "kubernetes:"
+	PodDeviceOwner = "network:secondary"
 	CharSet = "abcdefghijklmnopqrstuvwxyz0123456789"
 
 	FakeAddresses = 100
@@ -355,7 +355,8 @@ func (c *Client) AssignPrivateIPAddresses(ctx context.Context, eniID string, toA
 			Name: fmt.Sprintf(PodInterfaceName+"-%s", randomString(10)),
 			NetworkID: port.NetworkID,
 			SubnetID: port.FixedIPs[0].SubnetID,
-			DeviceOwner: fmt.Sprintf(PodDeviceOwner+"%s", eniID),
+			DeviceOwner: PodDeviceOwner,
+			DeviceID: eniID,
 			ProjectID: c.filters[ProjectID],
 		}
 		p, err := c.createPort(opt)
@@ -499,6 +500,7 @@ func (c *Client) createPort(opt PortCreateOpts) (*eniTypes.ENI, error) {
 		Name:      opt.Name,
 		NetworkID: opt.NetworkID,
 		DeviceOwner:    opt.DeviceOwner,
+		DeviceID: opt.DeviceID,
 		ProjectID: opt.ProjectID,
 		FixedIPs: FixedIPOpts{
 			{
