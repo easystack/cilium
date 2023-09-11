@@ -371,7 +371,7 @@ func (c *Client) AssignPrivateIPAddresses(ctx context.Context, eniID string, toA
 		err = c.updatePortAllowedAddressPairs(eniID, allowedAddressPairs)
 		if err != nil {
 			log.Errorf("######## Failed to update port allowed-address-pairs with error: %+v", err)
-			err = c.deletePort(eniID)
+			err = c.deletePort(p.ID)
 			if err != nil {
 				log.Errorf("######## Failed to rollback to delete port with error: %+v", err)
 			}

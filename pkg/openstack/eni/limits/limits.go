@@ -34,9 +34,9 @@ func Get(instanceType string) (limit ipamTypes.Limits, ok bool) {
 	limits.RLock()
 	//limit, ok = limits.m[instanceType]
 	limit = ipamTypes.Limits{
-		Adapters: 10,
-		IPv4: 10,
-		IPv6: 10,
+		Adapters: 6,
+		IPv4: 20,
+		IPv6: 20,
 	}
 	ok = true
 	limits.RUnlock()
