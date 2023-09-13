@@ -592,16 +592,7 @@ func (c *Client) describeNetworkInterfaces() ([]ports.Port, error) {
 	var err error
 
 	opts := ports.ListOpts{
-		NetworkID: c.filters[NetworkID],
 		ProjectID: c.filters[ProjectID],
-	}
-
-	if c.filters[SubnetID] != "" {
-		opts.FixedIPs = []ports.FixedIPOpts{
-			ports.FixedIPOpts{
-				SubnetID: c.filters[SubnetID],
-			},
-		}
 	}
 
 	err = ports.List(c.neutronV2, opts).EachPage(func(page pagination.Page) (bool, error) {
@@ -620,10 +611,12 @@ func (c *Client) describeNetworkInterfaces() ([]ports.Port, error) {
 func (c *Client) describeVpcs() ([]networks.Network, error) {
 	opts := networks.ListOpts{
 		ProjectID: c.filters[ProjectID],
-		ID: c.filters[NetworkID],
 	}
 
-	pages, _ := networks.List(c.neutronV2, opts).AllPages()
+	pages, err := networks.List(c.neutronV2, opts).AllPages()
+	if err != nil {
+		return nil, err
+	}
 	allNetworks, _ := networks.ExtractNetworks(pages)
 	return allNetworks, nil
 }
@@ -632,9 +625,11 @@ func (c *Client) describeVpcs() ([]networks.Network, error) {
 func (c *Client) describeSubnets() ([]subnets.Subnet, error) {
 	opts := subnets.ListOpts{
 		ProjectID: c.filters[ProjectID],
-		NetworkID: c.filters[NetworkID],
 	}
-	pages, _ := subnets.List(c.neutronV2, opts).AllPages()
+	pages, err := subnets.List(c.neutronV2, opts).AllPages()
+	if err != nil {
+		return nil, err
+	}
 	allSubnets, _ := subnets.ExtractSubnets(pages)
 	return allSubnets, nil
 }
@@ -643,7 +638,10 @@ func (c *Client) describeSecurityGroups() ([]groups.SecGroup, error) {
 	opts := groups.ListOpts{
 		ProjectID: c.filters[ProjectID],
 	}
-	pages, _ := groups.List(c.neutronV2, opts).AllPages()
+	pages, err := groups.List(c.neutronV2, opts).AllPages()
+	if err != nil {
+		return nil, err
+	}
 	allSecGroups, _ := groups.ExtractGroups(pages)
 	return allSecGroups, nil
 }
