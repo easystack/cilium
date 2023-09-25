@@ -37,16 +37,11 @@ func (a *AllocatorOpenStack) Init(ctx context.Context) error {
 	}
 
 	var err error
-	networkID := operatorOption.Config.OpenStackNetworkID
-	if networkID == "" {
-		return fmt.Errorf("faile to init openstack IPAM allocator, Network ID is required")
-	}
 
-	subnetID := operatorOption.Config.OpenStackSubnetID
 	projectID := operatorOption.Config.OpenStackProjectID
 
 	a.client, err = api.NewClient(aMetrics, operatorOption.Config.IPAMAPIQPSLimit, operatorOption.Config.IPAMAPIBurst,
-		map[string]string{api.NetworkID: networkID, api.SubnetID: subnetID, api.ProjectID: projectID})
+		map[string]string{api.ProjectID: projectID})
 
 	if err != nil {
 		log.Errorf("Failed to init openstack client with error: %s", err)
