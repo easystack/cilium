@@ -395,7 +395,7 @@ func (n *NodeDiscovery) UpdateCiliumNodeResource() {
 				}
 				log.WithError(err).Fatal("Unable to create CiliumNode resource")
 			} else {
-				log.Errorf("#################  node spec is %+v, subnetid is %s", nodeResource.Spec.OpenStack, nodeResource.Spec.OpenStack.SubnetID)
+				log.Errorf("#################  node spec is %+v", nodeResource.Spec.OpenStack)
 				log.Info("Successfully created CiliumNode resource")
 				return
 			}
@@ -727,14 +727,6 @@ func (n *NodeDiscovery) mutateNodeResource(nodeResource *ciliumv2.CiliumNode) er
 		if c := n.NetConf; c != nil {
 			if len(c.OpenStack.SecurityGroups) > 0 {
 				nodeResource.Spec.OpenStack.SecurityGroups = c.OpenStack.SecurityGroups
-			}
-
-			if c.OpenStack.SubnetID != "" {
-				nodeResource.Spec.OpenStack.SubnetID = c.OpenStack.SubnetID
-			}
-
-			if c.OpenStack.VPCID != "" {
-				nodeResource.Spec.OpenStack.VPCID = c.OpenStack.VPCID
 			}
 
 			if c.OpenStack.CIDR != "" {

@@ -27,20 +27,10 @@ type Spec struct {
 	// +kubebuilder:validation:Optional
 	AvailabilityZone string `json:"availability-zone,omitempty"`
 
-	// VPCID is the network ID to use when allocating ENIs.
-	//
-	// +kubebuilder:validation:Optional
-	VPCID string `json:"vpc-id,omitempty"`
-
 	// CIDR is vpc ipv4 CIDR
 	//
 	// +kubebuilder:validation:Optional
 	CIDR string `json:"cidr,omitempty"`
-
-	// SubnetID is the ID of subnet id of ENI
-	//
-	// +kubebuilder:validation:Optional
-	SubnetID string `json:"subnet-id,omitempty"`
 
 	// SecurityGroups is the list of security groups to attach to any ENI
 	// that is created and attached to the instance.

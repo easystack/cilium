@@ -86,12 +86,11 @@ spec:
                 type: object
               subnet-id:
                 type: string
+                x-kubernetes-validations:
+                  - message: subnet-id is immutable spec
+                    rule: self == oldSelf
               vpc-id:
                 type: string
-            required:
-            - cidr
-            - subnet-id
-            - vpc-id
             type: object
         required:
         - spec

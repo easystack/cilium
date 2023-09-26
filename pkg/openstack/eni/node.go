@@ -126,7 +126,7 @@ func (n *Node) CreateInterface(ctx context.Context, allocation *ipam.AllocationA
 			fmt.Errorf(
 				"No matching subnet available for interface creation (AZ=%s SubnetID=%s)",
 				resource.Spec.OpenStack.AvailabilityZone,
-				resource.Spec.OpenStack.SubnetID,
+				pool.SubnetId(),
 			)
 	}
 	allocation.PoolID = ipamTypes.PoolID(subnet.ID)
@@ -540,18 +540,13 @@ func (n *Node) getSecurityGroupIDs(ctx context.Context, eniSpec eniTypes.Spec) (
 //  3. If none of these work, fall back to just choosing the subnet with the most addresses
 //     available.
 func (n *Node) findSuitableSubnet(spec eniTypes.Spec, limits ipamTypes.Limits, subnetId string) *ipamTypes.Subnet {
-	var subnet *ipamTypes.Subnet
+	log.Infof("@@@@@@@@@@@@@@@@@@ subnet id is %s", subnetId)
+
 	if subnetId != "" {
 		return n.manager.GetSubnet(subnetId)
 	}
-	ids := []string{spec.SubnetID}
-	log.Infof("@@@@@@@@@@@@@@@@@@ subnet id is %s", spec.SubnetID)
-	if len(spec.SubnetID) > 0 {
-		return n.manager.FindSubnetByIDs(spec.VPCID, spec.AvailabilityZone, ids)
-	}
 
-	subnet = n.manager.GetSubnet(spec.SubnetID)
-	return subnet
+	return nil
 }
 
 // allocENIIndex will alloc an monotonically increased index for each ENI on this instance.

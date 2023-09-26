@@ -24,6 +24,7 @@ type CiliumPodIPPool struct {
 	Spec IPPoolSpec `json:"spec"`
 }
 
+// +kubebuilder:validation:XValidation:rule="!has(oldSelf.subnet-id) || has(self.subnet-id)", message="Value is required once set"
 type IPPoolSpec struct {
 	// IPv4 specifies the IPv4 CIDRs and mask sizes of the pool
 	//
@@ -35,13 +36,14 @@ type IPPoolSpec struct {
 	// +kubebuilder:validation:Optional
 	IPv6 *IPv6PoolSpec `json:"ipv6"`
 
-	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:XValidation:rule=(self == oldSelf)
 	SubnetId string `json:"subnet-id"`
 
-	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Optional
 	CIDR string `json:"cidr"`
 
-	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Optional
 	VPCId string `json:"vpc-id"`
 }
 

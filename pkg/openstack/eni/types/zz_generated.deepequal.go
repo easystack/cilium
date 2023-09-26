@@ -154,13 +154,7 @@ func (in *Spec) DeepEqual(other *Spec) bool {
 	if in.AvailabilityZone != other.AvailabilityZone {
 		return false
 	}
-	if in.VPCID != other.VPCID {
-		return false
-	}
 	if in.CIDR != other.CIDR {
-		return false
-	}
-	if in.SubnetID != other.SubnetID {
 		return false
 	}
 	if ((in.SecurityGroups != nil) && (other.SecurityGroups != nil)) || ((in.SecurityGroups == nil) != (other.SecurityGroups == nil)) {

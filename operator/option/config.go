@@ -241,12 +241,6 @@ const (
 
 	// OpenStack options
 
-	// OpenStackNetworkID allows user to specific vpc
-	OpenStackNetworkID = "openstack-network-id"
-
-	// OpenStackSubnetID allows user to specific subnet
-	OpenStackSubnetID = "openstack-subnet-id"
-
 	// OpenStackDefaultSubnetID allows user to specific subnet for default pool
 	OpenStackDefaultSubnetID = "openstack-default-subnet-id"
 
@@ -535,12 +529,6 @@ type OperatorConfig struct {
 
 	// OpenStack options
 
-	// OpenStack allow user to specific network
-	OpenStackNetworkID string
-
-	// OpenStack allow user to specific subnet
-	OpenStackSubnetID string
-
 	// OpenStack allow user to specific subnet for default pool
 	OpenStackDefaultSubnetID string
 
@@ -739,8 +727,6 @@ func (c *OperatorConfig) Populate(vp *viper.Viper) {
 
 	// OpenStack options
 
-	c.OpenStackNetworkID = vp.GetString(OpenStackNetworkID)
-	c.OpenStackSubnetID = vp.GetString(OpenStackSubnetID)
 	c.OpenStackProjectID = vp.GetString(OpenStackProjectID)
 	c.OpenStackReleaseExcessIPs = vp.GetBool(OpenStackReleaseExcessIPs)
 	c.OpenStackDefaultSubnetID = vp.GetString(OpenStackDefaultSubnetID)

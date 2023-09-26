@@ -462,12 +462,6 @@ spec:
                     items:
                       type: string
                     type: array
-                  subnet-id:
-                    description: SubnetID is the ID of subnet id of ENI
-                    type: string
-                  vpc-id:
-                    description: VPCID is the network ID to use when allocating ENIs.
-                    type: string
                 type: object
             type: object
           status:

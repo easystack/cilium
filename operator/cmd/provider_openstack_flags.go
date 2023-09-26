@@ -13,10 +13,6 @@ import (
 func init() {
 	flags := rootCmd.Flags()
 
-	flags.String(operatorOption.OpenStackNetworkID, "", "Specific Network ID for OpenStack. If not set use same VPC as operator")
-	option.BindEnv(Vp, operatorOption.OpenStackNetworkID)
-	flags.String(operatorOption.OpenStackSubnetID, "", "Specific subnet ID for OpenStack.")
-	option.BindEnv(Vp, operatorOption.OpenStackSubnetID)
 	flags.String(operatorOption.OpenStackProjectID, "", "Specific project ID for OpenStack.")
 	option.BindEnv(Vp, operatorOption.OpenStackProjectID)
 	flags.Bool(operatorOption.OpenStackReleaseExcessIPs, true, "Enable releasing excess free IP addresses from OpenStack.")
