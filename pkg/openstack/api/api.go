@@ -216,7 +216,8 @@ func (c *Client) GetInstances(ctx context.Context, vpcs ipamTypes.VirtualNetwork
 		log.Errorf("######## networkInterface is %+v", iface)
 		id, eni, err := parseENI(&iface, subnets)
 		if err != nil {
-			return nil, err
+			log.Errorf("######## Failed to pares eni %+v, with error %s", iface, err)
+			continue
 		}
 
 		log.Errorf("######## Update instancesMap, instanceID is %s, eni is: %+v", id, eni)
@@ -595,6 +596,11 @@ func (c *Client) deletePort(id string) error {
 // parseENI parses a ecs.NetworkInterface as returned by the ecs service API,
 // converts it into a eniTypes.ENI object
 func parseENI(port *ports.Port, subnets ipamTypes.SubnetMap) (instanceID string, eni *eniTypes.ENI, err error) {
+
+	if len(port.FixedIPs) == 0 {
+		log.Errorf("##### Failed to parse ENI %+v, because that fixedIPs is empty.", port)
+		return "", nil, fmt.Errorf("FixedIPs of port is empty")
+	}
 
 	var eniType string
 	if strings.HasPrefix(port.DeviceOwner, VMDeviceOwner) {
