@@ -146,6 +146,12 @@ func newNodeStore(nodeName string, conf Configuration, owner Owner, clientset cl
 					if newNode, ok := newObj.(*ciliumv2.CiliumNode); ok {
 						valid = true
 						newNode = newNode.DeepCopy()
+						for id, v := range newNode.Status.OpenStack.ENIs {
+							log.Warningf("######### New cilium node %s: eni %s is %+v ", newNode.Name, id, v)
+						}
+						for id, v := range oldNode.Status.OpenStack.ENIs {
+							log.Warningf("!!!!!!!!! Old cilium node %s: eni %s is %+v ", oldNode.Name, id, v)
+						}
 						if oldNode.DeepEqual(newNode) {
 							// The UpdateStatus call in refreshNode requires an up-to-date
 							// CiliumNode.ObjectMeta.ResourceVersion. Therefore, we store the most

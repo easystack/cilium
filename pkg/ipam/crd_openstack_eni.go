@@ -18,6 +18,7 @@ import (
 )
 
 func configureOpenStackENIs(oldNode, newNode *ciliumv2.CiliumNode, mtuConfig MtuConfiguration) error {
+	log.Errorf("############ configure openstack enis: oldNode is %+v, newNode is %+v", oldNode, newNode)
 	var (
 		existingENIByName map[string]eniTypes.ENI
 		addedENIByMac     = configMap{}
@@ -28,6 +29,7 @@ func configureOpenStackENIs(oldNode, newNode *ciliumv2.CiliumNode, mtuConfig Mtu
 	}
 
 	for id, eni := range newNode.Status.OpenStack.ENIs {
+		log.Errorf("############ eni from newNode is %+v", eni)
 		if utils.IsExcludedByTags(eni.Tags) {
 			continue
 		}
