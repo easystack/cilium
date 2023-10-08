@@ -262,6 +262,14 @@ func deriveVpcCIDRs(node *ciliumv2.CiliumNode) (primaryCIDR *cidr.CIDR, secondar
 		// A node belongs to a single VPC so we can pick the first ENI
 		// in the list and derive the VPC CIDR from it.
 		for _, eni := range node.Status.OpenStack.ENIs {
+
+			// there are more than one subnets for openstack multiple pools
+			// always derive the subnet cidr of primary nic as native routing cidr which is used in Configure Routing only for ENI mode
+			// returned primary cider will be configured n.conf.SetIPv4NativeRoutingCIDR(primaryCIDR)
+			// so that different cidrs will come into fatal error in autoDetectIPv4NativeRoutingCIDR()
+			if ! openStack.IsExcludedByTags(eni.Tags){
+				continue
+			}
 			c, err := cidr.ParseCIDR(eni.Subnet.CIDR)
 			if err == nil {
 				primaryCIDR = c
@@ -345,20 +353,9 @@ func (n *nodeStore) hasMinimumIPsInPool() (minimumReached bool, required, numAva
 			if !n.autoDetectIPv4NativeRoutingCIDR() {
 				minimumReached = false
 			}
-
-			if len(n.ownNode.Spec.IPAM.CrdPools) > 0 {
-				poolMinimumReached := true
-				for _, pool := range n.ownNode.Spec.IPAM.CrdPools {
-					if len(pool) < required {
-						poolMinimumReached = false
-					}
-				}
-				if poolMinimumReached {
-					minimumReached = true
-				}
-			}
 		}
 	}
+
 	if n.ownNode.Spec.IPAM.CrdPools != nil {
 		if n.conf.IPAMMode() == ipamOption.IPAMOpenStack {
 			if !n.autoDetectIPv4NativeRoutingCIDR() {
