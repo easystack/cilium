@@ -78,9 +78,8 @@ const (
 )
 
 const (
-	CiliumPodIPPoolVersion         = "cilium.io/v2alpha1"
-	CiliumPodIPPoolKind            = "CiliumPodIPPool"
-	CiliumPodIPPoolDefaultPoolName = "default"
+	CiliumPodIPPoolVersion = "cilium.io/v2alpha1"
+	CiliumPodIPPoolKind    = "CiliumPodIPPool"
 )
 
 type set map[string]struct{}
@@ -862,7 +861,7 @@ func (extraManager) CreateDefaultPool(subnets ipamTypes.SubnetMap) {
 					Kind:       CiliumPodIPPoolKind,
 				},
 				ObjectMeta: v1.ObjectMeta{
-					Name: CiliumPodIPPoolDefaultPoolName,
+					Name: string(PoolDefault),
 				},
 				Spec: v2alpha1.IPPoolSpec{
 					SubnetId: defaultSubnetID,

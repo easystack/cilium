@@ -267,7 +267,7 @@ func deriveVpcCIDRs(node *ciliumv2.CiliumNode) (primaryCIDR *cidr.CIDR, secondar
 			// always derive the subnet cidr of primary nic as native routing cidr which is used in Configure Routing only for ENI mode
 			// returned primary cider will be configured n.conf.SetIPv4NativeRoutingCIDR(primaryCIDR)
 			// so that different cidrs will come into fatal error in autoDetectIPv4NativeRoutingCIDR()
-			if ! openStack.IsExcludedByTags(eni.Tags){
+			if !openStack.IsExcludedByTags(eni.Tags) {
 				continue
 			}
 			c, err := cidr.ParseCIDR(eni.Subnet.CIDR)
@@ -358,20 +358,25 @@ func (n *nodeStore) hasMinimumIPsInPool() (minimumReached bool, required, numAva
 
 	if n.ownNode.Spec.IPAM.CrdPools != nil {
 		if n.conf.IPAMMode() == ipamOption.IPAMOpenStack {
-			if !n.autoDetectIPv4NativeRoutingCIDR() {
-				minimumReached = false
-			}
 
 			if len(n.ownNode.Spec.IPAM.CrdPools) > 0 {
-				poolMinimumReached := true
-				for _, pool := range n.ownNode.Spec.IPAM.CrdPools {
-					if len(pool) < required {
-						poolMinimumReached = false
-					}
-				}
-				if poolMinimumReached {
+				defaultPool, exist := n.ownNode.Spec.IPAM.CrdPools[string(PoolDefault)]
+				if !exist || len(defaultPool) < required {
+					minimumReached = false
+				} else {
 					minimumReached = true
 				}
+				if exist {
+					for ip := range defaultPool {
+						if !n.isIPInReleaseHandshake(ip) {
+							numAvailable++
+						}
+					}
+				}
+			}
+
+			if !n.autoDetectIPv4NativeRoutingCIDR() {
+				minimumReached = false
 			}
 		}
 	}
