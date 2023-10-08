@@ -700,10 +700,10 @@ func (n *Node) UnbindStaticIP(ctx context.Context, release *ipam.ReleaseAction, 
 
 func (n *Node) ReleaseStaticIP(address string, pool string) error {
 	if enis, ok := n.poolsEnis[ipam.Pool(pool)]; ok && len(enis) > 0 {
-		if _, ok = n.k8sObj.Status.ENI.ENIs[enis[0]]; !ok {
+		if _, ok = n.k8sObj.Status.OpenStack.ENIs[enis[0]]; !ok {
 			return fmt.Errorf("eni %s not found on node %s", enis[0], n.k8sObj.Name)
 		}
-		err := n.manager.api.DeleteNeutronPort(address, n.k8sObj.Status.ENI.ENIs[enis[0]].VPC.ID)
+		err := n.manager.api.DeleteNeutronPort(address, n.k8sObj.Status.OpenStack.ENIs[enis[0]].VPC.ID)
 		if err != nil {
 			log.Infof("release static failed: %v", err)
 			return err
