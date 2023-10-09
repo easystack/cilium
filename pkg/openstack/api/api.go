@@ -48,7 +48,7 @@ const (
 
 	VMDeviceOwner  = "compute:"
 	PodDeviceOwner = "network:secondary"
-	CharSet = "abcdefghijklmnopqrstuvwxyz0123456789"
+	CharSet        = "abcdefghijklmnopqrstuvwxyz0123456789"
 
 	FakeAddresses = 100
 )
@@ -371,12 +371,12 @@ func (c *Client) AssignPrivateIPAddresses(ctx context.Context, eniID string, toA
 	var addresses []string
 	for i := 0; i < toAllocate; i++ {
 		opt := PortCreateOpts{
-			Name: fmt.Sprintf(PodInterfaceName+"-%s", randomString(10)),
-			NetworkID: port.NetworkID,
-			SubnetID: port.FixedIPs[0].SubnetID,
+			Name:        fmt.Sprintf(PodInterfaceName+"-%s", randomString(10)),
+			NetworkID:   port.NetworkID,
+			SubnetID:    port.FixedIPs[0].SubnetID,
 			DeviceOwner: PodDeviceOwner,
-			DeviceID: eniID,
-			ProjectID: c.filters[ProjectID],
+			DeviceID:    eniID,
+			ProjectID:   c.filters[ProjectID],
 		}
 		p, err := c.createPort(opt)
 		if err != nil {
@@ -498,6 +498,9 @@ func (c Client) addPortAllowedAddressPairs(eniID string, pairs []ports.AddressPa
 
 // deletePortAllowedAddressPairs to assign secondary ip address
 func (c Client) deletePortAllowedAddressPairs(eniID string, pairs []ports.AddressPair) error {
+	if len(pairs) == 0 {
+		return nil
+	}
 	opts := ports.UpdateOpts{
 		AllowedAddressPairs: &pairs,
 	}
@@ -558,11 +561,11 @@ func (c Client) getPortFromIP(netID, ip string) (*ports.Port, error) {
 func (c *Client) createPort(opt PortCreateOpts) (*eniTypes.ENI, error) {
 
 	copts := ports.CreateOpts{
-		Name:      opt.Name,
-		NetworkID: opt.NetworkID,
-		DeviceOwner:    opt.DeviceOwner,
-		DeviceID: opt.DeviceID,
-		ProjectID: opt.ProjectID,
+		Name:        opt.Name,
+		NetworkID:   opt.NetworkID,
+		DeviceOwner: opt.DeviceOwner,
+		DeviceID:    opt.DeviceID,
+		ProjectID:   opt.ProjectID,
 		FixedIPs: FixedIPOpts{
 			{
 				SubnetID:  opt.SubnetID,
