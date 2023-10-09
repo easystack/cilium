@@ -591,14 +591,6 @@ func (n *NodeManager) SyncMultiPool(node *Node) error {
 			if _, hasPoolCrd := n.pools[p]; hasPoolCrd {
 				if node.pools[Pool(p)] == nil {
 					node.pools[Pool(p)] = NewCrdPool(Pool(p), node, n.releaseExcessIPs)
-					if nodeToPools[sNode.Name] == nil {
-						nodeToPools[sNode.Name] = poolSet{}
-					}
-					nodeToPools[sNode.Name][p] = InUse
-					if poolsToNodes[p] == nil {
-						poolsToNodes[p] = map[string]struct{}{}
-					}
-					poolsToNodes[p][sNode.Name] = struct{}{}
 				}
 			}
 		}

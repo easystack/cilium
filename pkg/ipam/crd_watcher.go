@@ -51,19 +51,7 @@ var (
 
 	k8sManager = extraManager{reSyncMap: map[*Node]struct{}{}}
 
-	// node to pool map
-	nodeToPools map[string]poolSet
-
-	// pool to node map
-	poolsToNodes map[string]set
-
 	creationDefaultPoolOnce sync.Once
-)
-
-const (
-	Deleted poolState = iota
-	InUse
-	Updated
 )
 
 const (
@@ -102,8 +90,6 @@ type extraOperation interface {
 
 func InitIPAMOpenStackExtra(slimClient slimclientset.Interface, alphaClient v2alpha12.CiliumV2alpha1Interface, stopCh <-chan struct{}) {
 	multiPoolExtraInit.Do(func() {
-		nodeToPools = map[string]poolSet{}
-		poolsToNodes = map[string]set{}
 
 		nodesInit(slimClient, stopCh)
 		poolsInit(alphaClient, stopCh)
@@ -252,7 +238,7 @@ func (extraManager) ListK8sSlimNode() []*slim_corev1.Node {
 	return out
 }
 
-// GetK8sSlimNode returns *slim_corev1.Nod by nodeName which stored in slimNodeStore
+// GetK8sSlimNode returns *slim_corev1.Node by nodeName which stored in slimNodeStore
 func (extraManager) GetK8sSlimNode(nodeName string) (*slim_corev1.Node, error) {
 	nodeInterface, exists, err := slimNodeStore.GetByKey(nodeName)
 	if err != nil {
@@ -308,6 +294,7 @@ func compareNodeAnnotationAndLabelChange(oldObj, newObj interface{}) bool {
 				return true
 			}
 		}
+	}
 
 	}
 
@@ -817,15 +804,7 @@ func updatePool(obj interface{}) {
 	if !exists {
 		return
 	}
-	if poolsToNodes[key] == nil {
-		poolsToNodes[key] = map[string]struct{}{}
-	} else {
-		for node, _ := range poolsToNodes[key] {
-			if k8sManager.nodeManager.pools[key].Spec.SubnetId != p.(*v2alpha1.CiliumPodIPPool).Spec.SubnetId {
-				nodeToPools[node][key] = Updated
-			}
-		}
-	}
+
 	k8sManager.nodeManager.pools[key] = p.(*v2alpha1.CiliumPodIPPool)
 }
 

@@ -81,7 +81,7 @@ type PoolStatistics struct {
 	available ipamTypes.AllocationMap
 }
 
-func NewCrdPool(name Pool, node *Node, releaseExcessIPs bool) *crdPool {
+func NewCrdPool(name Pool, node *Node, releaseExcessIPs bool) pool {
 	return &crdPool{
 		name:             name,
 		node:             node,
