@@ -295,9 +295,6 @@ func compareNodeAnnotationAndLabelChange(oldObj, newObj interface{}) bool {
 			}
 		}
 	}
-
-	}
-
 	return false
 }
 
