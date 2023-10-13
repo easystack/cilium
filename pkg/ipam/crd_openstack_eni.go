@@ -16,7 +16,9 @@ import (
 )
 
 func configureOpenStackENIs(oldNode, newNode *ciliumv2.CiliumNode, mtuConfig MtuConfiguration) error {
-	log.Errorf("############ configure openstack enis: oldNode is %+v, newNode is %+v", oldNode.Status.OpenStack.ENIs, newNode.Status.OpenStack.ENIs)
+	if oldNode != nil && oldNode.Status.OpenStack.ENIs != nil && newNode.Status.OpenStack.ENIs != nil {
+		log.Errorf("############ configure openstack enis: oldNode is %+v, newNode is %+v", oldNode.Status.OpenStack.ENIs, newNode.Status.OpenStack.ENIs)
+	}
 	var (
 		existingENIByName map[string]eniTypes.ENI
 		addedENIByMac     = configMap{}
