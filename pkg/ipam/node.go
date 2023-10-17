@@ -921,6 +921,8 @@ func (n *Node) maintainIPPool(ctx context.Context) (instanceMutated bool, err er
 		n.removeStaleReleaseIPs()
 	}
 
+	n.allocateStaticIpMutex.Lock()
+	defer n.allocateStaticIpMutex.Unlock()
 	a, err := n.determineMaintenanceAction()
 	if err != nil {
 		n.abortNoLongerExcessIPs(nil)
