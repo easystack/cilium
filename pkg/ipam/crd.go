@@ -881,7 +881,7 @@ func (a *crdAllocator) Allocate(ip net.IP, owner string, pool Pool) (*Allocation
 	a.mutex.Lock()
 	defer a.mutex.Unlock()
 	if a.poolAllocated[pool.String()] == nil {
-		return nil, fmt.Errorf("IP Pool unexist")
+		a.poolAllocated[pool.String()] = map[string]ipamTypes.AllocationIP{}
 	}
 
 	if am, ok := a.poolAllocated[pool.String()][ip.String()]; ok {
