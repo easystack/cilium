@@ -82,6 +82,17 @@ func (c *FakeCiliumPodIPPools) Update(ctx context.Context, ciliumPodIPPool *v2al
 	return obj.(*v2alpha1.CiliumPodIPPool), err
 }
 
+// UpdateStatus was generated because the type contains a Status member.
+// Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
+func (c *FakeCiliumPodIPPools) UpdateStatus(ctx context.Context, ciliumPodIPPool *v2alpha1.CiliumPodIPPool, opts v1.UpdateOptions) (*v2alpha1.CiliumPodIPPool, error) {
+	obj, err := c.Fake.
+		Invokes(testing.NewRootUpdateSubresourceAction(ciliumpodippoolsResource, "status", ciliumPodIPPool), &v2alpha1.CiliumPodIPPool{})
+	if obj == nil {
+		return nil, err
+	}
+	return obj.(*v2alpha1.CiliumPodIPPool), err
+}
+
 // Delete takes name of the ciliumPodIPPool and deletes it. Returns an error if one occurs.
 func (c *FakeCiliumPodIPPools) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
 	_, err := c.Fake.

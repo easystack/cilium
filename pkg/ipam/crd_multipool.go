@@ -35,7 +35,22 @@ type pool interface {
 	requireSyncCsip()
 	syncCsipComplete()
 	waitingForSyncCsip() bool
+	poolStatus() poolStatus
+	setPoolStatus(s poolStatus)
 }
+
+type poolStatus int
+
+const (
+	Active poolStatus = iota
+	Recycling
+	Delete
+)
+
+const (
+	// MaxPools limit the number of pool per node
+	MaxPools = 5
+)
 
 // PoolStatistics represent the IP allocation statistics of a node
 type PoolStatistics struct {
@@ -81,14 +96,16 @@ type PoolStatistics struct {
 	available ipamTypes.AllocationMap
 }
 
-func NewCrdPool(name Pool, node *Node, releaseExcessIPs bool) pool {
+func NewCrdPool(name Pool, node *Node, releaseExcessIPs bool, status poolStatus) pool {
 	return &crdPool{
-		name:             name,
-		node:             node,
-		stats:            &Statistics{},
-		available:        map[string]ipamTypes.AllocationIP{},
-		statistics:       PoolStatistics{},
-		releaseExcessIPs: releaseExcessIPs,
+		name:                      name,
+		node:                      node,
+		stats:                     &Statistics{},
+		available:                 map[string]ipamTypes.AllocationIP{},
+		statistics:                PoolStatistics{},
+		releaseExcessIPs:          releaseExcessIPs,
+		status:                    status,
+		waitingForPoolMaintenance: true,
 	}
 }
 
@@ -125,29 +142,72 @@ type crdPool struct {
 	statistics PoolStatistics
 
 	needSyncCsip bool
+
+	status poolStatus
 }
 
 // maintainCRDIPPool attempts to allocate or release all required IPs to fulfill the needed gap.
 // returns instanceMutated which tracks if state changed with the cloud provider and is used
 // to determine if IPAM pool maintainer trigger func needs to be invoked.
 func (p *crdPool) maintainCRDIPPool(ctx context.Context) (poolMutated bool, err error) {
-	a, err := p.determinePoolMaintenanceAction()
-	if err != nil {
-		p.abortNoLongerExcessIPs(nil)
-		return false, err
+	if p.status == Active {
+		a, err := p.determinePoolMaintenanceAction()
+		if err != nil {
+			p.abortNoLongerExcessIPs(nil)
+			return false, err
+		}
+
+		// Maintenance request has already been fulfilled
+		if a == nil {
+			p.abortNoLongerExcessIPs(nil)
+			return false, nil
+		}
+
+		if instanceMutated, err := p.handleIPRelease(ctx, a); instanceMutated || err != nil {
+			return instanceMutated, err
+		}
+
+		return p.handleMultiPoolIPAllocation(ctx, a)
 	}
 
-	// Maintenance request has already been fulfilled
-	if a == nil {
-		p.abortNoLongerExcessIPs(nil)
+	if p.status == Recycling {
+		existENIs := false
+		for _, eni := range p.node.resource.Status.OpenStack.ENIs {
+			if eni.Pool == p.name.String() {
+				existENIs = true
+				break
+			}
+		}
+		if !existENIs && p.statistics.AvailableIPs == 0 {
+			p.setPoolStatus(Delete)
+			err := k8sManager.RemoveFinalizerFlag(string(p.name), p.node.name)
+			if err != nil {
+				return false, err
+			}
+			return false, nil
+		}
+		poolMutated, err = p.releaseAllPreallocateIPs(ctx)
+		return
+	}
+
+	return false, nil
+}
+
+// releaseAllPreallocateIPs attempts to release all preallocate ips, but still reserve the ips which in use.
+func (p *crdPool) releaseAllPreallocateIPs(ctx context.Context) (instanceMutated bool, err error) {
+	scopedLog := p.logger()
+
+	if !p.releaseExcessIPs {
 		return false, nil
 	}
 
-	if instanceMutated, err := p.handleIPRelease(ctx, a); instanceMutated || err != nil {
-		return instanceMutated, err
-	}
+	p.abortNoLongerExcessIPs(nil)
 
-	return p.handleMultiPoolIPAllocation(ctx, a)
+	stats := p.stats
+	releaseCount := stats.AvailableIPs - stats.UsedIPs
+	r := p.node.ops.PrepareIPRelease(releaseCount, scopedLog, p.name)
+
+	return p.handleIPRelease(ctx, &maintenanceAction{release: r})
 }
 
 func (p *crdPool) determinePoolMaintenanceAction() (a *maintenanceAction, err error) {
@@ -305,7 +365,11 @@ func (p *crdPool) recalculate(allocate ipamTypes.AllocationMap, stats ipamStats.
 	}
 
 	p.stats.AvailableIPs = len(p.available)
-	p.stats.NeededIPs = calculateNeededIPs(p.stats.AvailableIPs, p.stats.UsedIPs, p.getPreAllocate(), p.getMinAllocate(), maxAllocate)
+	if p.status == Active {
+		p.stats.NeededIPs = calculateNeededIPs(p.stats.AvailableIPs, p.stats.UsedIPs, p.getPreAllocate(), p.getMinAllocate(), maxAllocate)
+	} else {
+		p.stats.NeededIPs = 0
+	}
 	p.stats.ExcessIPs = calculateExcessIPs(p.stats.AvailableIPs, usedIPForExcessCalc, p.getPreAllocate(), p.getMinAllocate(), p.node.getMaxAboveWatermark())
 	p.stats.RemainingInterfaces = stats.RemainingAvailableInterfaceCount
 	p.stats.Capacity = stats.NodeCapacity
@@ -368,7 +432,7 @@ func (p *crdPool) releaseNeeded() (needed bool) {
 	needed = p.releaseExcessIPs && !p.waitingForPoolMaintenance && p.resyncNeeded.IsZero() && p.stats.ExcessIPs > 0
 	if p.node.resource != nil {
 		releaseInProgress := len(p.node.resource.Status.IPAM.ReleaseIPs) > 0
-		needed = needed || releaseInProgress
+		needed = needed || releaseInProgress || p.status != Active
 	}
 	return
 }
@@ -453,4 +517,14 @@ func (p *crdPool) syncCsipComplete() {
 
 func (p *crdPool) waitingForSyncCsip() bool {
 	return p.needSyncCsip
+}
+
+func (p *crdPool) poolStatus() poolStatus {
+	return p.status
+}
+
+func (p *crdPool) setPoolStatus(s poolStatus) {
+	p.mutex.Lock()
+	p.status = s
+	p.mutex.Unlock()
 }

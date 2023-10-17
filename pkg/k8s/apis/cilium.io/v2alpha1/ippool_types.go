@@ -3,7 +3,9 @@
 
 package v2alpha1
 
-import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+import (
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+)
 
 // +genclient
 // +genclient:nonNamespaced
@@ -22,6 +24,9 @@ type CiliumPodIPPool struct {
 
 	// +kubebuilder:validation:Required
 	Spec IPPoolSpec `json:"spec"`
+
+	// +kubebuilder:validation:Optional
+	Status IPPoolStatus `json:"status"`
 }
 
 // +kubebuilder:validation:XValidation:rule="!has(oldSelf.subnet-id) || has(self.subnet-id)", message="Value is required once set"
@@ -45,6 +50,18 @@ type IPPoolSpec struct {
 
 	// +kubebuilder:validation:Optional
 	VPCId string `json:"vpc-id"`
+}
+
+// IPPoolStatus describe the status of the nodes which uses the pool
+type IPPoolStatus struct {
+	// Items is a list of CiliumPodIPPools.
+	Items map[string]ItemSpec `json:"items"`
+}
+
+// ItemSpec describe the status of the node which uses the pool
+type ItemSpec struct {
+	Phase  string `json:"phase"`
+	Status string `json:"status"`
 }
 
 type IPv4PoolSpec struct {

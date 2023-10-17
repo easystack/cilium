@@ -68,6 +68,11 @@ const (
 const (
 	CiliumPodIPPoolVersion = "cilium.io/v2alpha1"
 	CiliumPodIPPoolKind    = "CiliumPodIPPool"
+
+	CiliumPodIPPoolNodeReadyStatus    = "Ready"
+	CiliumPodIPPoolNodeNotReadyStatus = "NotReady"
+
+	CreatePoolSuccessPhase = "Created crd pool success."
 )
 
 type set map[string]struct{}
@@ -139,7 +144,7 @@ func poolsInit(poolGetter v2alpha12.CiliumPodIPPoolsGetter, stopCh <-chan struct
 		0,
 		cache.ResourceEventHandlerFuncs{
 			AddFunc: func(obj interface{}) {
-				updatePool(obj)
+				addPool(obj)
 			},
 			DeleteFunc: func(obj interface{}) {
 				deletePool(obj)
@@ -251,6 +256,21 @@ func (extraManager) GetK8sSlimNode(nodeName string) (*slim_corev1.Node, error) {
 		}, nodeName)
 	}
 	return nodeInterface.(*slim_corev1.Node), nil
+}
+
+// GetCiliumPodIPPool returns *v2alpha1.CiliumPodIPPool by name which stored in crdPoolStore
+func (extraManager) GetCiliumPodIPPool(name string) (*v2alpha1.CiliumPodIPPool, error) {
+	poolInterface, exists, err := crdPoolStore.GetByKey(name)
+	if err != nil {
+		return nil, err
+	}
+	if !exists {
+		return nil, k8sErrors.NewNotFound(schema.GroupResource{
+			Group:    "cilium.io",
+			Resource: "CiliumPodIPPool",
+		}, name)
+	}
+	return poolInterface.(*v2alpha1.CiliumPodIPPool), nil
 }
 
 // LabelNodeWithPool relabel the node with provided labels map
@@ -746,6 +766,78 @@ func (extraManager) CreateDefaultPool(subnets ipamTypes.SubnetMap) {
 	log.Warnf("The creation of default pool has been ignored, due to no subnet-id set.")
 }
 
+func (extraManager) AddFinalizerFlag(pool string, node string) error {
+	ipPool, err := k8sManager.GetCiliumPodIPPool(pool)
+	if err != nil {
+		return err
+	}
+	ipPool = ipPool.DeepCopy()
+	needUpdate := true
+	for _, finalizer := range ipPool.Finalizers {
+		if finalizer == node {
+			needUpdate = false
+			break
+		}
+	}
+
+	if ipPool.Status.Items == nil {
+		ipPool.Status.Items = map[string]v2alpha1.ItemSpec{}
+	}
+
+	if needUpdate {
+		ipPool.Finalizers = append(ipPool.Finalizers, node)
+
+	}
+
+	if spec, hasItem := ipPool.Status.Items[node]; !hasItem || (hasItem && spec.Status != CiliumPodIPPoolNodeReadyStatus) {
+		ipPool.Status.Items[node] = v2alpha1.ItemSpec{
+			Phase:  CreatePoolSuccessPhase,
+			Status: CiliumPodIPPoolNodeReadyStatus,
+		}
+		needUpdate = true
+	}
+
+	if needUpdate {
+		_, err = k8sManager.alphaClient.CiliumPodIPPools().Update(context.TODO(), ipPool, v1.UpdateOptions{})
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (extraManager) RemoveFinalizerFlag(pool string, node string) error {
+	ipPool, err := k8sManager.GetCiliumPodIPPool(pool)
+	if err != nil {
+		return err
+	}
+
+	if len(ipPool.ObjectMeta.Finalizers) == 0 && ipPool.Status.Items == nil {
+		return nil
+	}
+
+	var finalizers []string
+	for idx, finalizer := range ipPool.ObjectMeta.Finalizers {
+		if finalizer == node {
+			finalizers = append(append([]string(nil), ipPool.ObjectMeta.Finalizers[:idx]...), ipPool.ObjectMeta.Finalizers[idx+1:]...)
+			break
+		}
+	}
+
+	ipPool = ipPool.DeepCopy()
+
+	ipPool.ObjectMeta.Finalizers = finalizers
+
+	delete(ipPool.Status.Items, node)
+
+	_, err = k8sManager.alphaClient.CiliumPodIPPools().Update(context.TODO(), ipPool, v1.UpdateOptions{})
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 func SyncPoolToAPIServer(subnets ipamTypes.SubnetMap) {
 	if !k8sManager.apiReady {
 		return
@@ -768,4 +860,30 @@ func SyncPoolToAPIServer(subnets ipamTypes.SubnetMap) {
 			}
 		}
 	}
+}
+func (extraManager) UpdateCiliumIPPoolStatus(pool string, node string, status, phase string) error {
+	ipPool, err := k8sManager.GetCiliumPodIPPool(pool)
+	if err != nil {
+		return err
+	}
+
+	ipPool = ipPool.DeepCopy()
+	m := map[string]v2alpha1.ItemSpec{}
+	if ipPool.Status.Items != nil {
+		m = ipPool.Status.Items
+	}
+
+	m[node] = v2alpha1.ItemSpec{
+		Phase:  phase,
+		Status: status,
+	}
+
+	ipPool.Status.Items = m
+
+	_, err = k8sManager.alphaClient.CiliumPodIPPools().Update(context.TODO(), ipPool, v1.UpdateOptions{})
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

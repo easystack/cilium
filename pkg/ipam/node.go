@@ -997,12 +997,19 @@ func (n *Node) MaintainIPPool(ctx context.Context) error {
 	var instanceMutated bool
 	var err error
 	var poolMutated bool
-	for _, pool := range n.pools {
-		if pool.waitingForMaintenance() {
+	for name, pool := range n.pools {
+		if pool.waitingForMaintenance() || pool.poolStatus() != Active {
 			poolMutated, err = pool.maintainCRDIPPool(ctx)
 			if poolMutated {
 				instanceMutated = true
 			}
+
+			if pool.poolStatus() == Delete {
+				delete(n.pools, name)
+				instanceMutated = true
+				continue
+			}
+
 			if err == nil {
 				n.logger().Debug("Setting resync needed")
 				pool.requireResync()
