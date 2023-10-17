@@ -8,6 +8,8 @@ import (
 	"errors"
 	"fmt"
 	"github.com/cilium/cilium/pkg/ipam/staticip"
+	"github.com/vishvananda/netlink"
+	"golang.org/x/sys/unix"
 	"net"
 	"reflect"
 	"strconv"
@@ -15,8 +17,6 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
-	"github.com/vishvananda/netlink"
-	"golang.org/x/sys/unix"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -426,6 +426,14 @@ func (n *nodeStore) updateLocalNodeResource(node *ciliumv2.CiliumNode) {
 		}
 	}
 
+	m := make(map[string]string)
+	for p, allocationMap := range node.Spec.IPAM.CrdPools {
+		for ip, _ := range allocationMap {
+			m[ip] = p
+		}
+	}
+	n.ipsToPool = m
+
 	releaseUpstreamSyncNeeded := false
 	// ACK or NACK IPs marked for release by the operator
 	for ip, status := range n.ownNode.Status.IPAM.ReleaseIPs {
@@ -437,39 +445,6 @@ func (n *nodeStore) updateLocalNodeResource(node *ciliumv2.CiliumNode) {
 			continue
 		}
 		if p, ok := n.ipsToPool[ip]; ok {
-			if _, ok := n.ownNode.Spec.IPAM.CrdPools[p][ip]; !ok {
-				if status == ipamOption.IPAMReleased {
-					// Remove entry from release-ips only when it is removed from .spec.ipam.pool as well
-					delete(n.ownNode.Status.IPAM.ReleaseIPs, ip)
-					releaseUpstreamSyncNeeded = true
-
-					// Remove the unreachable route for this IP
-					if n.conf.UnreachableRoutesEnabled() {
-						parsedIP := net.ParseIP(ip)
-						if parsedIP == nil {
-							// Unable to parse IP, no point in trying to remove the route
-							log.Warningf("Unable to parse IP %s", ip)
-							continue
-						}
-
-						err := netlink.RouteDel(&netlink.Route{
-							Dst:   &net.IPNet{IP: parsedIP, Mask: net.CIDRMask(32, 32)},
-							Table: unix.RT_TABLE_MAIN,
-							Type:  unix.RTN_UNREACHABLE,
-						})
-						if err != nil && !errors.Is(err, unix.ESRCH) {
-							// We ignore ESRCH, as it means the entry was already deleted
-							log.WithError(err).Warningf("Unable to delete unreachable route for IP %s", ip)
-							continue
-						}
-					}
-				} else if status == ipamOption.IPAMMarkForRelease {
-					// NACK the IP, if this node doesn't own the IP
-					n.ownNode.Status.IPAM.ReleaseIPs[ip] = ipamOption.IPAMDoNotRelease
-					releaseUpstreamSyncNeeded = true
-				}
-				continue
-			}
 
 			// Ignore all other states, transition to do-not-release and ready-for-release are allowed only from
 			// marked-for-release
@@ -511,6 +486,38 @@ func (n *nodeStore) updateLocalNodeResource(node *ciliumv2.CiliumNode) {
 				n.ownNode.Status.IPAM.ReleaseIPs[ip] = ipamOption.IPAMReadyForRelease
 			}
 			releaseUpstreamSyncNeeded = true
+		} else {
+			if status == ipamOption.IPAMReleased {
+				// Remove entry from release-ips only when it is removed from .spec.ipam.pool as well
+				delete(n.ownNode.Status.IPAM.ReleaseIPs, ip)
+				releaseUpstreamSyncNeeded = true
+
+				// Remove the unreachable route for this IP
+				if n.conf.UnreachableRoutesEnabled() {
+					parsedIP := net.ParseIP(ip)
+					if parsedIP == nil {
+						// Unable to parse IP, no point in trying to remove the route
+						log.Warningf("Unable to parse IP %s", ip)
+						continue
+					}
+
+					err := netlink.RouteDel(&netlink.Route{
+						Dst:   &net.IPNet{IP: parsedIP, Mask: net.CIDRMask(32, 32)},
+						Table: unix.RT_TABLE_MAIN,
+						Type:  unix.RTN_UNREACHABLE,
+					})
+					if err != nil && !errors.Is(err, unix.ESRCH) {
+						// We ignore ESRCH, as it means the entry was already deleted
+						log.WithError(err).Warningf("Unable to delete unreachable route for IP %s", ip)
+						continue
+					}
+				}
+			} else if status == ipamOption.IPAMMarkForRelease {
+				// NACK the IP, if this node doesn't own the IP
+				n.ownNode.Status.IPAM.ReleaseIPs[ip] = ipamOption.IPAMDoNotRelease
+				releaseUpstreamSyncNeeded = true
+			}
+			continue
 		}
 	}
 
@@ -568,13 +575,6 @@ func (n *nodeStore) refreshNode() error {
 		}
 		a.mutex.RUnlock()
 	}
-	m := make(map[string]string)
-	for p, allocationMap := range node.Spec.IPAM.CrdPools {
-		for ip, _ := range allocationMap {
-			m[ip] = p
-		}
-	}
-	n.ipsToPool = m
 
 	var err error
 	_, err = n.clientset.CiliumV2().CiliumNodes().UpdateStatus(context.TODO(), node, metav1.UpdateOptions{})

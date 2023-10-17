@@ -200,7 +200,7 @@ func (ipam *IPAM) allocateNextFamily(family Family, owner string, pool Pool, nee
 					now := time.Now()
 					switch ipCopy.Status.IPStatus {
 					case v2alpha1.WaitingForAssign:
-						err = fmt.Errorf("cilium static ip crd is not ready, still waiting for next assign")
+						err = fmt.Errorf("cilium static ip crd is not ready,status is %s, still waiting for next assign", v2alpha1.WaitingForAssign)
 						return
 					case v2alpha1.Unbind:
 						ipCopy.Status.IPStatus = v2alpha1.WaitingForAssign
@@ -209,6 +209,10 @@ func (ipam *IPAM) allocateNextFamily(family Family, owner string, pool Pool, nee
 						}
 						ipCopy.Spec.NodeName = nodeTypes.GetName()
 						err = ipam.staticIPManager.UpdateStaticIPStatus(ipCopy)
+						if err != nil {
+							log.Errorf("update static ip: %s for pod: %s failed.", ipCopy.Spec.IP, owner)
+						}
+						err = fmt.Errorf("cilium static ip crd is not ready,status is %s, still waiting for next assign", v2alpha1.Unbind)
 						return
 					case v2alpha1.Assigned:
 						updateTime := ipCopy.Status.UpdateTime.Time
@@ -216,6 +220,9 @@ func (ipam *IPAM) allocateNextFamily(family Family, owner string, pool Pool, nee
 							return
 						}
 						ip := net.ParseIP(ipCopy.Spec.IP)
+						// set retryCount to wait for the synchronization of ciliumnode when csip status is assigned but ciliumnode.ipam.spec is not ready.
+						retryCount := 5
+					allocate:
 						result, err = ipam.allocateIPWithoutLock(ip, owner, pool, true)
 						if err != nil {
 							if now.Sub(updateTime) > time.Second*60 {
@@ -223,7 +230,14 @@ func (ipam *IPAM) allocateNextFamily(family Family, owner string, pool Pool, nee
 								ipCopy.Status.UpdateTime = v1.Time{
 									Time: now,
 								}
-								err = ipam.staticIPManager.UpdateStaticIPStatus(ipCopy)
+								err1 := ipam.staticIPManager.UpdateStaticIPStatus(ipCopy)
+								if err1 != nil {
+									log.Errorf("update static ip: %s for pod: %s failed.", ipCopy.Spec.IP, owner)
+								}
+							} else if retryCount > 0 {
+								retryCount--
+								time.Sleep(1 * time.Second)
+								goto allocate
 							}
 							return
 						}
