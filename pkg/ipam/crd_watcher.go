@@ -145,7 +145,7 @@ func poolsInit(poolGetter v2alpha12.CiliumPodIPPoolsGetter, stopCh <-chan struct
 				deletePool(obj)
 			},
 		},
-		transformToPool,
+		nil,
 	)
 	go func() {
 		poolController.Run(stopCh)
@@ -178,7 +178,7 @@ func staticIPInit(ipGetter v2alpha12.CiliumStaticIPsGetter, stopCh <-chan struct
 				k8sManager.updateStaticIP(ipCrd)
 			},
 		},
-		transformToStaticIP,
+		nil,
 	)
 	go func() {
 		staticIPController.Run(stopCh)
@@ -259,6 +259,8 @@ func (extraManager) LabelNodeWithPool(nodeName string, labels map[string]string)
 	if err != nil {
 		return err
 	}
+
+	oldNode = oldNode.DeepCopy()
 	oldLabel := oldNode.GetLabels()
 
 	// remove all the old pool label
@@ -278,84 +280,14 @@ func (extraManager) LabelNodeWithPool(nodeName string, labels map[string]string)
 }
 
 func compareNodeAnnotationAndLabelChange(oldObj, newObj interface{}) bool {
+
 	oldAccessor, _ := meta.Accessor(oldObj)
 	newAccessor, _ := meta.Accessor(newObj)
-
-	oldLabels := oldAccessor.GetLabels()
-	newLabels := newAccessor.GetLabels()
-
-	if oldLabels == nil {
-		oldLabels = map[string]string{}
+	if oldAccessor.GetAnnotations()[poolAnnotation] != newAccessor.GetAnnotations()[poolAnnotation] {
+		return true
 	}
 
-	for newLabel, _ := range newLabels {
-		if strings.HasPrefix(newLabel, poolLabel) {
-			if _, has := oldLabels[newLabel]; !has {
-				return true
-			}
-		}
-	}
 	return false
-}
-
-func transformToStaticIP(obj interface{}) (interface{}, error) {
-	switch concreteObj := obj.(type) {
-	case *v2alpha1.CiliumStaticIP:
-		n := &v2alpha1.CiliumStaticIP{
-			TypeMeta: v1.TypeMeta{
-				Kind:       concreteObj.Kind,
-				APIVersion: concreteObj.APIVersion,
-			},
-			ObjectMeta: v1.ObjectMeta{
-				Name:            concreteObj.Name,
-				ResourceVersion: concreteObj.ResourceVersion,
-				Namespace:       concreteObj.Namespace,
-			},
-			Spec: v2alpha1.StaticIPSpec{
-				IP:          concreteObj.Spec.IP,
-				NodeName:    concreteObj.Spec.NodeName,
-				Pool:        concreteObj.Spec.Pool,
-				RecycleTime: concreteObj.Spec.RecycleTime,
-			},
-			Status: v2alpha1.StaticIPStatus{
-				IPStatus:   concreteObj.Status.IPStatus,
-				UpdateTime: concreteObj.Status.UpdateTime,
-			},
-		}
-		*concreteObj = v2alpha1.CiliumStaticIP{}
-		return n, nil
-	case cache.DeletedFinalStateUnknown:
-		p, ok := concreteObj.Obj.(*v2alpha1.CiliumStaticIP)
-		if !ok {
-			return nil, fmt.Errorf("unknown object type %T", concreteObj.Obj)
-		}
-		dfsu := cache.DeletedFinalStateUnknown{
-			Key: concreteObj.Key,
-			Obj: &v2alpha1.CiliumStaticIP{
-				TypeMeta: p.TypeMeta,
-				ObjectMeta: v1.ObjectMeta{
-					Name:            p.Name,
-					ResourceVersion: p.ResourceVersion,
-					Namespace:       p.Namespace,
-				},
-				Spec: v2alpha1.StaticIPSpec{
-					IP:          p.Spec.IP,
-					NodeName:    p.Spec.NodeName,
-					Pool:        p.Spec.Pool,
-					RecycleTime: p.Spec.RecycleTime,
-				},
-				Status: v2alpha1.StaticIPStatus{
-					IPStatus:   p.Status.IPStatus,
-					UpdateTime: p.Status.UpdateTime,
-				},
-			},
-		}
-		// Small GC optimization
-		*p = v2alpha1.CiliumStaticIP{}
-		return dfsu, nil
-	default:
-		return nil, fmt.Errorf("unknown object type %T", concreteObj)
-	}
 }
 
 // updateStaticIP responds for reconcile the csip event
@@ -747,52 +679,7 @@ func transformToNode(obj interface{}) (interface{}, error) {
 	}
 }
 
-func transformToPool(obj interface{}) (interface{}, error) {
-	switch concreteObj := obj.(type) {
-	case *v2alpha1.CiliumPodIPPool:
-		n := &v2alpha1.CiliumPodIPPool{
-			TypeMeta: concreteObj.TypeMeta,
-			ObjectMeta: v1.ObjectMeta{
-				Name:            concreteObj.Name,
-				ResourceVersion: concreteObj.ResourceVersion,
-			},
-			Spec: v2alpha1.IPPoolSpec{
-				SubnetId: concreteObj.Spec.SubnetId,
-				VPCId:    concreteObj.Spec.VPCId,
-				CIDR:     concreteObj.Spec.CIDR,
-			},
-		}
-		*concreteObj = v2alpha1.CiliumPodIPPool{}
-		return n, nil
-	case cache.DeletedFinalStateUnknown:
-		p, ok := concreteObj.Obj.(*v2alpha1.CiliumPodIPPool)
-		if !ok {
-			return nil, fmt.Errorf("unknown object type %T", concreteObj.Obj)
-		}
-		dfsu := cache.DeletedFinalStateUnknown{
-			Key: concreteObj.Key,
-			Obj: &v2alpha1.CiliumPodIPPool{
-				TypeMeta: p.TypeMeta,
-				ObjectMeta: v1.ObjectMeta{
-					Name:            p.Name,
-					ResourceVersion: p.ResourceVersion,
-				},
-				Spec: v2alpha1.IPPoolSpec{
-					SubnetId: p.Spec.SubnetId,
-					VPCId:    p.Spec.VPCId,
-					CIDR:     p.Spec.CIDR,
-				},
-			},
-		}
-		// Small GC optimization
-		*p = v2alpha1.CiliumPodIPPool{}
-		return dfsu, nil
-	default:
-		return nil, fmt.Errorf("unknown object type %T", concreteObj)
-	}
-}
-
-func updatePool(obj interface{}) {
+func addPool(obj interface{}) {
 	key, _ := queueKeyFunc(obj)
 	p, exists, err := crdPoolStore.GetByKey(key)
 	if err != nil {
@@ -801,7 +688,6 @@ func updatePool(obj interface{}) {
 	if !exists {
 		return
 	}
-
 	k8sManager.nodeManager.pools[key] = p.(*v2alpha1.CiliumPodIPPool)
 }
 

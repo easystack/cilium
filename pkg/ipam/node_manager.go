@@ -578,11 +578,13 @@ func (n *NodeManager) SyncMultiPool(node *Node) error {
 	if err != nil {
 		return fmt.Errorf("warning: get k8s node failed: %v ", err)
 	}
-	var pools []string
+	pools := map[string]struct{}{}
 
-	for label, _ := range sNode.Labels {
-		if p, found := strings.CutPrefix(label, poolLabel+"/"); found {
-			pools = append(pools, p)
+	if sNode.Annotations != nil {
+		if pAnnotation := strings.Split(sNode.Annotations[poolAnnotation], ","); len(pAnnotation) > 0 {
+			for _, a := range pAnnotation {
+				pools[a] = struct{}{}
+			}
 		}
 	}
 
