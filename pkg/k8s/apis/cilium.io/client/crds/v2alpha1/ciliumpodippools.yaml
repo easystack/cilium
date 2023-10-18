@@ -105,14 +105,9 @@ spec:
                       type: string
                     status:
                       type: string
-                  required:
-                  - phase
-                  - status
                   type: object
                 description: Items is a list of CiliumPodIPPools.
                 type: object
-            required:
-            - items
             type: object
         required:
         - spec

@@ -590,69 +590,67 @@ func (n *NodeManager) SyncMultiPool(node *Node) error {
 		}
 	}
 
-	if len(pools) > 0 {
-		for p, _ := range pools {
-			if _, hasPoolCrd := n.pools[p]; hasPoolCrd {
-				if node.pools[Pool(p)] == nil {
-					if len(node.resource.Status.OpenStack.ENIs) == 0 {
-						log.Infoln("synchronization is not ready...")
-						return nil
+	for p, _ := range pools {
+		if _, hasPoolCrd := n.pools[p]; hasPoolCrd {
+			if node.pools[Pool(p)] == nil {
+				if len(node.resource.Status.OpenStack.ENIs) == 0 {
+					log.Infoln("synchronization is not ready...")
+					return nil
+				}
+				hasPool := false
+				for _, eni := range node.resource.Status.OpenStack.ENIs {
+					if eni.Pool == p {
+						hasPool = true
+						break
 					}
-					hasPool := false
-					for _, eni := range node.resource.Status.OpenStack.ENIs {
-						if eni.Pool == p {
-							hasPool = true
-							break
+				}
+				if !hasPool {
+					if len(node.pools) == MaxPools {
+						err := k8sManager.UpdateCiliumIPPoolStatus(p, node.name, "NotReady", "The node has reached the upper pool limit.")
+						if err != nil {
+							log.Errorf("Update CiliumIPPool status failed, error is %s.", err)
 						}
-					}
-					if !hasPool {
-						if len(node.pools) == MaxPools {
-							err := k8sManager.UpdateCiliumIPPoolStatus(p, node.name, "NotReady", "The node has reached the upper pool limit.")
-							if err != nil {
-								log.Errorf("Update CiliumIPPool status failed, error is %s.", err)
-							}
-							continue
-						}
-
-						limit, ok := limits.Get(node.resource.Spec.OpenStack.InstanceType)
-						if !ok {
-							log.Errorln("limit is not available")
-							continue
-						}
-
-						if len(node.resource.Status.OpenStack.ENIs) == limit.Adapters {
-							err := k8sManager.UpdateCiliumIPPoolStatus(p, node.name, "NotReady", "The node has reached the upper eni limit.")
-							if err != nil {
-								log.Errorf("Update CiliumIPPool status failed, error is %s.", err)
-							}
-							continue
-						}
+						continue
 					}
 
-					node.pools[Pool(p)] = NewCrdPool(Pool(p), node, n.releaseExcessIPs, Active)
-
-					//  Try 3 times when add finalizer flag failed
-					retryCount := 3
-				loop:
-					err := k8sManager.AddFinalizerFlag(p, node.name)
-					if err != nil {
-						if retryCount > 0 {
-							retryCount--
-							goto loop
-						}
-						log.Errorf("failed to add finalizer flag %s on ciliumpodippool %s after 3 times retry, error is %s", node.name, p, err)
+					limit, ok := limits.Get(node.resource.Spec.OpenStack.InstanceType)
+					if !ok {
+						log.Errorln("limit is not available")
+						continue
 					}
-				} else {
-					node.pools[Pool(p)].setPoolStatus(Active)
+
+					if len(node.resource.Status.OpenStack.ENIs) == limit.Adapters {
+						err := k8sManager.UpdateCiliumIPPoolStatus(p, node.name, "NotReady", "The node has reached the upper eni limit.")
+						if err != nil {
+							log.Errorf("Update CiliumIPPool status failed, error is %s.", err)
+						}
+						continue
+					}
 				}
 
-			}
-		}
+				node.pools[Pool(p)] = NewCrdPool(Pool(p), node, n.releaseExcessIPs, Active)
 
-		for p, crdPool := range node.pools {
-			if _, exist := pools[p.String()]; !exist && crdPool.poolStatus() == Active {
-				crdPool.setPoolStatus(Recycling)
+				//  Try 3 times when add finalizer flag failed
+				retryCount := 3
+			loop:
+				err := k8sManager.AddFinalizerFlag(p, node.name)
+				if err != nil {
+					if retryCount > 0 {
+						retryCount--
+						goto loop
+					}
+					log.Errorf("failed to add finalizer flag %s on ciliumpodippool %s after 3 times retry, error is %s", node.name, p, err)
+				}
+			} else {
+				node.pools[Pool(p)].setPoolStatus(Active)
 			}
+
+		}
+	}
+
+	for p, crdPool := range node.pools {
+		if _, exist := pools[p.String()]; !exist && crdPool.poolStatus() == Active {
+			crdPool.setPoolStatus(Recycling)
 		}
 	}
 

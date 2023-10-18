@@ -98,14 +98,13 @@ type PoolStatistics struct {
 
 func NewCrdPool(name Pool, node *Node, releaseExcessIPs bool, status poolStatus) pool {
 	return &crdPool{
-		name:                      name,
-		node:                      node,
-		stats:                     &Statistics{},
-		available:                 map[string]ipamTypes.AllocationIP{},
-		statistics:                PoolStatistics{},
-		releaseExcessIPs:          releaseExcessIPs,
-		status:                    status,
-		waitingForPoolMaintenance: true,
+		name:             name,
+		node:             node,
+		stats:            &Statistics{},
+		available:        map[string]ipamTypes.AllocationIP{},
+		statistics:       PoolStatistics{},
+		releaseExcessIPs: releaseExcessIPs,
+		status:           status,
 	}
 }
 

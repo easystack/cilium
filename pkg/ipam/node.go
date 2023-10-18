@@ -920,9 +920,6 @@ func (n *Node) maintainIPPool(ctx context.Context) (instanceMutated bool, err er
 	if n.manager.releaseExcessIPs {
 		n.removeStaleReleaseIPs()
 	}
-
-	n.allocateStaticIpMutex.Lock()
-	defer n.allocateStaticIpMutex.Unlock()
 	a, err := n.determineMaintenanceAction()
 	if err != nil {
 		n.abortNoLongerExcessIPs(nil)
@@ -976,6 +973,10 @@ func (n *Node) updateLastResync(syncTime time.Time) {
 // MaintainIPPool attempts to allocate or release all required IPs to fulfill
 // the needed gap. If required, interfaces are created.
 func (n *Node) MaintainIPPool(ctx context.Context) error {
+
+	n.allocateStaticIpMutex.Lock()
+	defer n.allocateStaticIpMutex.Unlock()
+
 	// As long as the instances API is unstable, don't perform any
 	// operation that can mutate state.
 	if !n.manager.InstancesAPIIsReady() {
@@ -1029,6 +1030,7 @@ func (n *Node) MaintainIPPool(ctx context.Context) error {
 	if instanceMutated || err != nil {
 		n.manager.resyncTrigger.Trigger()
 	}
+
 	return err
 }
 
