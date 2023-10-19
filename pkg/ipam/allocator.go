@@ -237,6 +237,7 @@ func (ipam *IPAM) allocateNextFamily(family Family, owner string, pool Pool, nee
 							return
 						}
 						ipCopy.Status.IPStatus = v2alpha1.InUse
+						ipCopy.Spec.RecycleTime = recycleTime
 						ipCopy.Status.UpdateTime = v1.Time{
 							Time: now,
 						}
