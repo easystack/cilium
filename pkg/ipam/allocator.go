@@ -248,7 +248,7 @@ func (ipam *IPAM) allocateNextFamily(family Family, owner string, pool Pool, nee
 						return
 					case v2alpha1.InUse:
 						ip := net.ParseIP(ipCopy.Spec.IP)
-						if ipam.getIPOwner(ipCopy.Spec.IP, pool) == owner && ipCopy.Spec.NodeName == nodeTypes.GetName() {
+						if (ipam.getIPOwner(ipCopy.Spec.IP, pool) == "" || ipam.getIPOwner(ipCopy.Spec.IP, pool) == owner) && ipCopy.Spec.NodeName == nodeTypes.GetName() {
 							ipCopy.Status.IPStatus = v2alpha1.InUse
 							ipCopy.Spec.NodeName = nodeTypes.GetName()
 							ipCopy.Status.UpdateTime = v1.Time{
@@ -262,8 +262,10 @@ func (ipam *IPAM) allocateNextFamily(family Family, owner string, pool Pool, nee
 							if err == nil {
 								return result, err
 							}
+							log.Errorf("allocate static for pod %s failed ,error is %s, status is %s.", owner, err, v2alpha1.InUse)
 						}
 					reAllocate:
+						log.Errorf("reAllocate static for pod %s failed ,csip's node is %s, but pod's node is %s, status is %s.", owner, ipCopy.Spec.NodeName, nodeTypes.GetName(), v2alpha1.InUse)
 						ipCopy.Status.IPStatus = v2alpha1.Idle
 						ipCopy.Spec.NodeName = nodeTypes.GetName()
 						ipCopy.Status.UpdateTime = v1.Time{

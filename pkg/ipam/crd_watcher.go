@@ -376,7 +376,9 @@ func (m extraManager) updateStaticIP(ipCrd *v2alpha1.CiliumStaticIP) {
 							return
 						}
 						if exists {
-							if pod.(*slim_corev1.Pod).Status.Phase == slim_corev1.PodRunning {
+							// fix: Pod in Unknown status doesn't have ip.
+							if pod.(*slim_corev1.Pod).Status.Phase == slim_corev1.PodRunning && pod.(*slim_corev1.Pod).Status.PodIP == ipCrd.Spec.IP {
+								log.Errorf("warn: csip %s 's status is %s, but Pod is still running, which is abnormal.", ipCrd.Name, v2alpha1.Idle)
 								return
 							}
 						}
