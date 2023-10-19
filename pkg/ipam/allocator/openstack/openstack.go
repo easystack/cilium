@@ -31,7 +31,7 @@ func (a *AllocatorOpenStack) Init(ctx context.Context) error {
 	var aMetrics api.MetricsAPI
 
 	if operatorOption.Config.EnableMetrics {
-		aMetrics = apiMetrics.NewPrometheusMetrics(operatorMetrics.Namespace, "openstack`", operatorMetrics.Registry)
+		aMetrics = apiMetrics.NewPrometheusMetrics(operatorMetrics.Namespace, "openstack", operatorMetrics.Registry)
 	} else {
 		aMetrics = &apiMetrics.NoOpMetrics{}
 	}
