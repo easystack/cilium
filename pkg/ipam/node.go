@@ -1204,13 +1204,6 @@ func (n *Node) update(origNode, node *v2.CiliumNode, attempts int, status bool) 
 }
 
 func (n *Node) AllocateStaticIP(ip string, pool Pool) (error, *Statistics) {
-	for _, eni := range n.resource.Status.OpenStack.ENIs {
-		for _, ipSet := range eni.SecondaryIPSets {
-			if ipSet.IpAddress == ip {
-				return errors.New("ip already allocated"), nil
-			}
-		}
-	}
 
 	scopedLog := n.logger()
 	retryCount := 1
