@@ -624,9 +624,13 @@ func parseENI(port *ports.Port, subnets ipamTypes.SubnetMap) (instanceID string,
 		Tags:           port.Tags,
 	}
 
-	nameSlice := strings.Split(port.Name, "-")
-	if strings.HasPrefix(port.Name, "cilium-vm-port-") && len(nameSlice) == 5 {
-		eni.Pool = nameSlice[len(nameSlice)-2]
+	if name, found := strings.CutPrefix(port.Name, "cilium-vm-port-"); found {
+		index := strings.LastIndex(name, "-")
+		if index > 0 {
+			eni.Pool = name[:index]
+		} else {
+			log.Errorf("ENI's pool can not found on name %s", port.Name)
+		}
 	}
 
 	subnet, ok := subnets[subnetID]
