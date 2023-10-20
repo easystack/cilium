@@ -159,6 +159,24 @@ func (n *Node) CreateInterface(ctx context.Context, allocation *ipam.AllocationA
 		eni.Subnet.CIDR = subnet.CIDR.String()
 	}
 
+	// Add tag to nic before attaching it to VM to make sure that
+	// the returned instance nics in func instancesAPI.Resync() has necessary tags
+	index, err := n.allocENIIndex()
+	if err != nil {
+		scopedLog.WithField("instanceID", instanceID).Error(err)
+		return 0, "Failed to allocate eni index", err
+	}
+	scopedLog.Info("########### got index is %d", index)
+	err = n.manager.api.AddTagToNetworkInterface(ctx, eniID, utils.FillTagWithENIIndex(index))
+	if err != nil {
+		scopedLog.Errorf("########### Failed to add tag with error: %+v, %s", err, err)
+		err = n.manager.api.DeleteNetworkInterface(ctx, eniID)
+		if err != nil {
+			scopedLog.Errorf("Failed to release ENI after failure to tag index, %s", err.Error())
+		}
+		return 0, unableToTagENI, fmt.Errorf("%s %s", unableToTagENI, err)
+	}
+
 	err = n.manager.api.AttachNetworkInterface(ctx, instanceID, eniID)
 	if err != nil {
 		if ifaces, err1 := n.manager.api.ListNetworkInterface(ctx, instanceID); err != nil {
@@ -180,26 +198,6 @@ func (n *Node) CreateInterface(ctx context.Context, allocation *ipam.AllocationA
 			scopedLog.Errorf("Failed to release ENI after failure to attach, %s", err1.Error())
 		}
 		return 0, unableToAttachENI, fmt.Errorf("%s %s", errUnableToAttachENI, err)
-	}
-
-	index, err := n.allocENIIndex()
-	if err != nil {
-		scopedLog.WithField("instanceID", instanceID).Error(err)
-		return 0, "Failed to allocate eni index", err
-	}
-	scopedLog.Info("########### got index is %d", index)
-	err = n.manager.api.AddTagToNetworkInterface(ctx, eniID, utils.FillTagWithENIIndex(index))
-	if err != nil {
-		scopedLog.Errorf("########### Failed to add tag with error: %+v, %s", err, err)
-		err = n.manager.api.DetachNetworkInterface(ctx, instanceID, eniID)
-		if err != nil {
-			scopedLog.Errorf("Failed to detach ENI after failure to tag index, %s", err.Error())
-		}
-		err = n.manager.api.DeleteNetworkInterface(ctx, eniID)
-		if err != nil {
-			scopedLog.Errorf("Failed to release ENI after failure to tag index, %s", err.Error())
-		}
-		return 0, unableToTagENI, fmt.Errorf("%s %s", unableToTagENI, err)
 	}
 
 	n.enis[eniID] = *eni
