@@ -146,7 +146,7 @@ func (n *Node) CreateInterface(ctx context.Context, allocation *ipam.AllocationA
 	scopedLog.Info("No more IPs available, creating new ENI")
 
 	instanceID := n.node.InstanceID()
-	eniID, eni, err := n.manager.api.CreateNetworkInterface(ctx, subnet.ID, subnet.VirtualNetworkID, instanceID, securityGroupIDs, pool)
+	eniID, eni, err := n.manager.api.CreateNetworkInterface(ctx, subnet.ID, subnet.VirtualNetworkID, instanceID, securityGroupIDs, pool, limits.Adapters)
 	if err != nil {
 		return 0, unableToCreateENI, fmt.Errorf("%s %s", errUnableToCreateENI, err)
 	}

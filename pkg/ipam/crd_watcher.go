@@ -17,7 +17,6 @@ import (
 	slimclientset "github.com/cilium/cilium/pkg/k8s/slim/k8s/client/clientset/versioned"
 	"github.com/cilium/cilium/pkg/k8s/utils"
 	k8sErrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/api/meta"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/tools/cache"
@@ -84,15 +83,6 @@ const (
 	poolLabel      = "openstack-ip-pool"
 )
 
-type extraOperation interface {
-	ListK8sSlimNode() []*slim_corev1.Node
-	GetK8sSlimNode(nodeName string) (*slim_corev1.Node, error)
-	LabelNodeWithPool(nodeName string, labels map[string]string) error
-	ListCiliumIPPool() []*v2alpha1.CiliumPodIPPool
-	updateCiliumNodeManagerPool()
-	listStaticIPs() []*v2alpha1.CiliumStaticIP
-}
-
 func InitIPAMOpenStackExtra(slimClient slimclientset.Interface, alphaClient v2alpha12.CiliumV2alpha1Interface, stopCh <-chan struct{}) {
 	multiPoolExtraInit.Do(func() {
 
@@ -116,17 +106,7 @@ func nodesInit(slimClient slimclientset.Interface, stopCh <-chan struct{}) {
 		utils.ListerWatcherFromTyped[*slim_corev1.NodeList](slimClient.CoreV1().Nodes()),
 		&slim_corev1.Node{},
 		0,
-		cache.ResourceEventHandlerFuncs{
-			AddFunc: func(obj interface{}) {
-				updateNode(obj)
-			},
-			UpdateFunc: func(oldObj, newObj interface{}) {
-				// little optimize for invoke updateNode
-				if compareNodeAnnotationAndLabelChange(oldObj, newObj) {
-					updateNode(newObj)
-				}
-			},
-		},
+		cache.ResourceEventHandlerFuncs{},
 		transformToNode,
 	)
 	go func() {
@@ -297,17 +277,6 @@ func (extraManager) LabelNodeWithPool(nodeName string, labels map[string]string)
 	oldNode.SetLabels(oldLabel)
 	_, err = k8sManager.client.CoreV1().Nodes().Update(context.Background(), oldNode, v1.UpdateOptions{})
 	return err
-}
-
-func compareNodeAnnotationAndLabelChange(oldObj, newObj interface{}) bool {
-
-	oldAccessor, _ := meta.Accessor(oldObj)
-	newAccessor, _ := meta.Accessor(newObj)
-	if oldAccessor.GetAnnotations()[poolAnnotation] != newAccessor.GetAnnotations()[poolAnnotation] {
-		return true
-	}
-
-	return false
 }
 
 // updateStaticIP responds for reconcile the csip event
@@ -716,24 +685,6 @@ func addPool(obj interface{}) {
 func deletePool(obj interface{}) {
 	key, _ := queueKeyFunc(obj)
 	delete(k8sManager.nodeManager.pools, key)
-}
-
-func updateNode(obj interface{}) {
-	key, _ := queueKeyFunc(obj)
-	var retryCount int
-loop:
-	node, ok := k8sManager.nodeManager.nodes[key]
-	if !ok && retryCount < 3 {
-		<-time.After(1 * time.Second)
-		retryCount++
-		goto loop
-	}
-	if ok {
-		err := k8sManager.nodeManager.SyncMultiPool(node)
-		if err != nil {
-			log.Error(err)
-		}
-	}
 }
 
 func (extraManager) CreateDefaultPool(subnets ipamTypes.SubnetMap) {

@@ -55,6 +55,7 @@ const (
 
 const (
 	PortNotFoundErr = "port not found"
+	IfaceLimitErr   = "reaches the eni upper limit"
 )
 
 var maxAttachRetries = wait.Backoff{
@@ -198,13 +199,13 @@ func newIdentityV3ClientOrDie(p *gophercloud.ProviderClient) (*gophercloud.Servi
 
 // GetInstances returns the list of all instances including their ENIs as
 // instanceMap
-func (c *Client) GetInstances(ctx context.Context, vpcs ipamTypes.VirtualNetworkMap, subnets ipamTypes.SubnetMap) (*ipamTypes.InstanceMap, error) {
+func (c *Client) GetInstances(ctx context.Context, vpcs ipamTypes.VirtualNetworkMap, subnets ipamTypes.SubnetMap, instanceIDs []string) (*ipamTypes.InstanceMap, error) {
 	instances := ipamTypes.NewInstanceMap()
 	log.Errorf("######## Do Get instances")
 	var networkInterfaces []ports.Port
 	var err error
 
-	networkInterfaces, err = c.describeNetworkInterfaces()
+	networkInterfaces, err = c.describeNetworkInterfaces(instanceIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -227,6 +228,38 @@ func (c *Client) GetInstances(ctx context.Context, vpcs ipamTypes.VirtualNetwork
 	}
 
 	return instances, nil
+}
+
+func (c *Client) GetInstance(ctx context.Context, vpcs ipamTypes.VirtualNetworkMap, subnets ipamTypes.SubnetMap, instanceID string) (instance *ipamTypes.Instance, err error) {
+	log.Errorf("######## Do Get instance, id is %s", instanceID)
+
+	instance = &ipamTypes.Instance{}
+	instance.Interfaces = map[string]ipamTypes.InterfaceRevision{}
+	var networkInterfaces []ports.Port
+
+	networkInterfaces, err = c.describeNetworkInterfacesByInstance(instanceID)
+	if err != nil {
+		return instance, err
+	}
+
+	for _, iface := range networkInterfaces {
+		if !strings.HasPrefix(iface.DeviceOwner, VMDeviceOwner) {
+			continue
+		}
+		log.Errorf("######## networkInterface is %+v", iface)
+		ifId, eni, err := parseENI(&iface, subnets)
+		if err != nil {
+			log.Errorf("######## Failed to pares eni %+v, with error %s", iface, err)
+			continue
+		}
+
+		instance.Interfaces[ifId] = ipamTypes.InterfaceRevision{
+			Resource: eni,
+		}
+	}
+	log.Errorf("######## Update instances, instanceID is %s, iface is: %+v", instanceID, instance.Interfaces)
+
+	return
 }
 
 // GetVpcs retrieves and returns all Vpcs
@@ -297,8 +330,13 @@ func (c *Client) GetSecurityGroups(ctx context.Context) (types.SecurityGroupMap,
 }
 
 // CreateNetworkInterface creates an ENI with the given parameters
-func (c *Client) CreateNetworkInterface(ctx context.Context, subnetID, netID, instanceID string, groups []string, pool ipam.Pool) (string, *eniTypes.ENI, error) {
+func (c *Client) CreateNetworkInterface(ctx context.Context, subnetID, netID, instanceID string, groups []string, pool ipam.Pool, maxENICount int) (string, *eniTypes.ENI, error) {
 	log.Errorf("######## Do create interface subnetid is: %s, networkid is: %s", subnetID, netID)
+
+	ifaces, err := c.describeNetworkInterfacesByInstance(instanceID)
+	if len(ifaces) >= maxENICount {
+		return "", nil, errors.New(IfaceLimitErr)
+	}
 
 	opt := PortCreateOpts{
 		Name:        fmt.Sprintf(VMInterfaceName+"-%s-%s", pool, randomString(10)),
@@ -661,13 +699,14 @@ func validIPAddress(ipStr string, cidr *net.IPNet) bool {
 	return false
 }
 
-// describeNetworkInterfaces lists all ENIs
-func (c *Client) describeNetworkInterfaces() ([]ports.Port, error) {
+// describeNetworkInterfacesByInstance lists all ENIs by instance
+func (c *Client) describeNetworkInterfacesByInstance(instanceID string) ([]ports.Port, error) {
 	var result []ports.Port
 	var err error
 
 	opts := ports.ListOpts{
 		ProjectID: c.filters[ProjectID],
+		DeviceID:  instanceID,
 	}
 
 	err = ports.List(c.neutronV2, opts).EachPage(func(page pagination.Page) (bool, error) {
@@ -680,6 +719,30 @@ func (c *Client) describeNetworkInterfaces() ([]ports.Port, error) {
 	})
 
 	return result, nil
+}
+
+// describeNetworkInterfaces lists all ENIs
+func (c *Client) describeNetworkInterfaces(instances []string) ([]ports.Port, error) {
+	var result []ports.Port
+	var err error
+
+	for _, instance := range instances {
+		opts := ports.ListOpts{
+			ProjectID: c.filters[ProjectID],
+			DeviceID:  instance,
+		}
+
+		err = ports.List(c.neutronV2, opts).EachPage(func(page pagination.Page) (bool, error) {
+			result, err = ports.ExtractPorts(page)
+			if err != nil {
+				return false, err
+			}
+
+			return true, nil
+		})
+	}
+
+	return result, err
 }
 
 // describeVpcs lists all VPCs

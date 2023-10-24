@@ -138,6 +138,8 @@ type AllocationImplementation interface {
 	// also called when the IPAM layer detects that state got out of sync.
 	Resync(ctx context.Context) time.Time
 
+	InstanceSync(ctx context.Context, instanceID string) time.Time
+
 	// HasInstance returns whether the instance is in instances
 	HasInstance(instanceID string) bool
 
@@ -188,7 +190,6 @@ type NodeManager struct {
 	instancesAPI       AllocationImplementation
 	k8sAPI             CiliumNodeGetterUpdater
 	metricsAPI         MetricsAPI
-	resyncTrigger      *trigger.Trigger
 	parallelWorkers    int64
 	releaseExcessIPs   bool
 	stableInstancesAPI bool
@@ -223,21 +224,6 @@ func NewNodeManager(instancesAPI AllocationImplementation, k8sAPI CiliumNodeGett
 		pools:            poolMap{},
 	}
 
-	resyncTrigger, err := trigger.NewTrigger(trigger.Parameters{
-		Name:            "ipam-node-manager-resync",
-		MinInterval:     10 * time.Millisecond,
-		MetricsObserver: metrics.ResyncTrigger(),
-		TriggerFunc: func(reasons []string) {
-			if syncTime, ok := mngr.instancesAPIResync(context.TODO()); ok {
-				mngr.Resync(context.TODO(), syncTime)
-			}
-		},
-	})
-	if err != nil {
-		return nil, fmt.Errorf("unable to initialize resync trigger: %s", err)
-	}
-
-	mngr.resyncTrigger = resyncTrigger
 	// Assume readiness, the initial blocking resync in Start() will update
 	// the readiness
 	mngr.SetInstancesAPIReadiness(true)
@@ -272,7 +258,6 @@ func (n *NodeManager) Start(ctx context.Context) error {
 				RunInterval: time.Minute,
 				DoFunc: func(ctx context.Context) error {
 					if syncTime, ok := n.instancesAPIResync(ctx); ok {
-						n.Resync(ctx, syncTime)
 
 						for _, node := range n.nodes {
 							err := n.SyncMultiPool(node)
@@ -280,6 +265,9 @@ func (n *NodeManager) Start(ctx context.Context) error {
 								log.Errorf("node %s syncMultiPool failed, error is %s ", node.name, err)
 							}
 						}
+
+						n.Resync(ctx, syncTime)
+
 						return nil
 					}
 					return nil
@@ -397,6 +385,24 @@ func (n *NodeManager) Upsert(resource *v2.CiliumNode) {
 			return
 		}
 
+		instanceSync, err := trigger.NewTrigger(trigger.Parameters{
+			Name:            fmt.Sprintf("ipam-node-instance-sync-%s", resource.Name),
+			MinInterval:     10 * time.Millisecond,
+			MetricsObserver: n.metricsAPI.ResyncTrigger(),
+			TriggerFunc: func(reasons []string) {
+				if syncTime, ok := node.instanceAPISync(ctx, resource.InstanceID()); ok {
+					node.manager.Resync(ctx, syncTime)
+				}
+			},
+		})
+		if err != nil {
+			poolMaintainer.Shutdown()
+			k8sSync.Shutdown()
+			node.logger().WithError(err).Error("Unable to create instance-sync trigger")
+			return
+		}
+		node.instanceSync = instanceSync
+
 		node.poolMaintainer = poolMaintainer
 		node.k8sSync = k8sSync
 		n.nodes[node.name] = node
@@ -424,6 +430,11 @@ func (n *NodeManager) Delete(resource *v2.CiliumNode) {
 		if node.retry != nil {
 			node.retry.Shutdown()
 		}
+		if node.instanceSync != nil {
+			node.instanceSync.Shutdown()
+		}
+
+		node.ops = n.instancesAPI.CreateNode(resource, node)
 	}
 
 	// Delete the instance from instanceManager. This will cause Update() to
