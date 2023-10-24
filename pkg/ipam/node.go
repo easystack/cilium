@@ -44,6 +44,9 @@ const (
 	// operator status
 	success = "success"
 	failed  = "failed"
+
+	// allocate ip status
+	AllocateStaticIPErr = "ip has already mount on eni"
 )
 
 func (n *Node) SetOpts(ops NodeOperations) {
@@ -1270,6 +1273,10 @@ retry:
 			n.manager.metricsAPI.AllocationAttempt(allocateIP, success, string(allocation.PoolID), metrics.SinceInSeconds(start))
 			n.manager.metricsAPI.AddIPAllocation(string(allocation.PoolID), int64(allocation.AvailableForAllocation))
 			return nil, stats
+		}
+
+		if strings.HasPrefix(err.Error(), AllocateStaticIPErr) {
+			return err, stats
 		}
 
 		n.manager.metricsAPI.AllocationAttempt(allocateIP, failed, string(allocation.PoolID), metrics.SinceInSeconds(start))

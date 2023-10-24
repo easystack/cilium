@@ -130,8 +130,8 @@ func staticIPInit(ipGetter v2alpha12.CiliumStaticIPsGetter, stopCh <-chan struct
 				if oldObj.(*v2alpha1.CiliumStaticIP).ObjectMeta.ResourceVersion == newObj.(*v2alpha1.CiliumStaticIP).ObjectMeta.ResourceVersion {
 					return
 				}
-				ipCopy := newObj.(*v2alpha1.CiliumStaticIP).DeepCopy()
-				k8sManager.updateStaticIP(ipCopy)
+				ipCrd := newObj.(*v2alpha1.CiliumStaticIP)
+				k8sManager.updateStaticIP(ipCrd)
 			},
 			DeleteFunc: func(obj interface{}) {
 				ipCrd := obj.(*v2alpha1.CiliumStaticIP)
@@ -267,7 +267,6 @@ func (m extraManager) updateStaticIP(ipCrd *v2alpha1.CiliumStaticIP) {
 	pool := ipCrd.Spec.Pool
 	ip := ipCrd.Spec.IP
 	podFullName := ipCrd.Namespace + "/" + ipCrd.Name
-	now := time.Now()
 
 	switch ipCrd.Status.IPStatus {
 	case v2alpha1.WaitingForAssign:
@@ -277,26 +276,12 @@ func (m extraManager) updateStaticIP(ipCrd *v2alpha1.CiliumStaticIP) {
 				err := p.allocateStaticIP(ip, Pool(pool))
 				if err != nil {
 					errMsg := fmt.Sprintf("allocate static ip: %v for pod %v failed: %s.", ip, podFullName, err)
-					ipCrd.Status.Phase = errMsg
-					_, err = k8sManager.alphaClient.CiliumStaticIPs(ipCrd.Namespace).Update(context.TODO(), ipCrd, v1.UpdateOptions{})
-					if err != nil {
-						log.Errorf("update statip ip status failed, when assign ip: %s for pod: %s on node: %s, error is %s.",
-							ip, podFullName, node, err)
-					}
+					k8sManager.UpdateCiliumStaticIP(ipCrd, v2alpha1.WaitingForAssign, errMsg)
 					return
 				}
 				// allocate static ip success, so operator need to update the ciliumnode resource.
 				k8sManager.requireSync(n)
-				ipCrd.Status.IPStatus = v2alpha1.Assigned
-				ipCrd.Status.UpdateTime = slim_metav1.Time(v1.Time{
-					Time: now,
-				})
-				_, err = k8sManager.alphaClient.CiliumStaticIPs(ipCrd.Namespace).Update(context.TODO(), ipCrd, v1.UpdateOptions{})
-				if err != nil {
-					log.Errorf("update statip ip status failed, when assign ip: %s for pod: %s on node: %s, error is %s.",
-						ip, podFullName, node, err)
-					return
-				}
+				k8sManager.UpdateCiliumStaticIP(ipCrd, v2alpha1.Assigned, "")
 			} else {
 				log.Errorf("can't not found pool %s on node %s, assign ip:%s for pod %s  cancel.", pool, node, ip, podFullName)
 				return
@@ -307,113 +292,32 @@ func (m extraManager) updateStaticIP(ipCrd *v2alpha1.CiliumStaticIP) {
 		}
 		log.Debugf("assign ip: %s for pod: %s success.", ip, podFullName)
 	case v2alpha1.Idle:
-		if n, ok := k8sManager.nodeManager.nodes[node]; ok {
-			if am, ok := n.resource.Spec.IPAM.CrdPools[pool]; ok {
-				if a, ok := am[ip]; ok {
-					if a.Resource != "" {
-						action := &ReleaseAction{
-							InterfaceID: a.Resource,
-							IPsToRelease: []string{
-								ip,
-							},
-						}
-						// before unbind the ip, we should check whether the pod is still running
-						pod, exists, err := watchers.PodStore.GetByKey(podFullName)
-						if err != nil {
-							log.Debugf("an error occurred while get pod from podStore: %s.", err)
-							return
-						}
-						if exists {
-							// fix: Pod in Unknown status doesn't have ip.
-							if pod.(*slim_corev1.Pod).Status.Phase == slim_corev1.PodRunning && pod.(*slim_corev1.Pod).Status.PodIP == ipCrd.Spec.IP {
-								log.Errorf("warn: csip %s 's status is %s, but Pod is still running, which is abnormal.", ipCrd.Name, v2alpha1.Idle)
-								return
-							}
-						}
-						log.Debugf("ready to unbind static ip %s for pod %s on node: %s", ip, podFullName, node)
-						err = n.Ops().UnbindStaticIP(context.TODO(), action, pool)
-						if err != nil && !strings.Contains(err.Error(), eniAddressNotFoundErr) {
-							errMsg := fmt.Sprintf("unbind static ip: %v for pod %v failed: %s.", ip, podFullName, err)
-							ipCrd.Status.Phase = errMsg
-							_, err = k8sManager.alphaClient.CiliumStaticIPs(ipCrd.Namespace).Update(context.TODO(), ipCrd, v1.UpdateOptions{})
-							if err != nil {
-								log.Errorf("update statip ip status failed, when unbind ip: %s for pod: %s on node: %s, error is %s.",
-									ip, podFullName, node, err)
-							}
-							return
-						}
-						log.Infof("unbind static ip %s for pod %s on node %s success.", ip, podFullName, node)
-						k8sManager.requireSync(n)
-						ipCrd.Status.IPStatus = v2alpha1.Unbind
-						ipCrd.Status.UpdateTime = slim_metav1.Time(v1.Time{
-							Time: now,
-						})
-						_, err = k8sManager.alphaClient.CiliumStaticIPs(ipCrd.Namespace).Update(context.TODO(), ipCrd, v1.UpdateOptions{})
-						if err != nil {
-							log.Errorf("update statip ip status failed, when unbind ip: %s for pod: %s on node: %s, error is %s.",
-								ip, podFullName, node, err)
-						}
-						log.Debugf("unbind static ip %s for pod %s on node: %s success.", ip, podFullName, node)
-						return
-					}
+		// before unbind the ip, we should check whether the pod is still running
+		pod, exists, err := watchers.PodStore.GetByKey(podFullName)
+		if err != nil {
+			log.Debugf("an error occurred while get pod from podStore: %s.", err)
+			return
+		}
+		if exists {
+			// fix: Pod in Unknown status doesn't have ip.
+			if pod.(*slim_corev1.Pod).Status.Phase == slim_corev1.PodRunning && pod.(*slim_corev1.Pod).Status.PodIP == ipCrd.Spec.IP {
+				log.Errorf("warn: csip %s 's status is %s, but Pod is still running, which is abnormal.", ipCrd.Name, v2alpha1.Idle)
+				return
+			}
+		}
+		ipPool, err := k8sManager.GetCiliumPodIPPool(pool)
+		if err != nil {
+			log.Errorf("get ciliumPodIPPool failed, error is %s.", err)
+			k8sManager.UpdateCiliumStaticIP(ipCrd, v2alpha1.Idle, err.Error())
+		} else {
+			if n, ok := k8sManager.nodeManager.nodes[node]; ok {
+				err = n.Ops().UnbindStaticIP(context.TODO(), ipCrd.Spec.IP, ipPool.Spec.VPCId)
+				if err != nil {
+					log.Errorf("unbind static ip %s failed, error is %s", ip, err)
+					k8sManager.UpdateCiliumStaticIP(ipCrd, v2alpha1.Idle, err.Error())
+					return
 				} else {
-					// eni seems not appeared on crdPools,so we back try to unbind ip from ciliumnode status
-					attached := false
-					interfaceID := ""
-					for i, eni := range n.resource.Status.OpenStack.ENIs {
-						for _, sip := range eni.SecondaryIPSets {
-							if sip.IpAddress == ip {
-								interfaceID = i
-								attached = true
-								goto release
-							}
-						}
-					}
-				release:
-					if attached {
-						log.Debugf("ready to unbind static ip %s for pod %s on node: %s", ip, podFullName, node)
-						action := &ReleaseAction{
-							InterfaceID: interfaceID,
-							IPsToRelease: []string{
-								ip,
-							},
-						}
-						err := n.Ops().UnbindStaticIP(context.TODO(), action, pool)
-						if err != nil && !strings.Contains(err.Error(), eniAddressNotFoundErr) {
-							errMsg := fmt.Sprintf("unbind static ip: %v for pod %v failed: %s.", ip, podFullName, err)
-							ipCrd.Status.Phase = errMsg
-							_, err = k8sManager.alphaClient.CiliumStaticIPs(ipCrd.Namespace).Update(context.TODO(), ipCrd, v1.UpdateOptions{})
-							if err != nil {
-								log.Errorf("update statip ip status failed, when unbind ip: %s for pod: %s on node: %s, error is %s.",
-									ip, podFullName, node, err)
-							}
-							return
-						}
-						k8sManager.requireSync(n)
-						ipCrd.Status.IPStatus = v2alpha1.Unbind
-						ipCrd.Status.UpdateTime = slim_metav1.Time(v1.Time{
-							Time: now,
-						})
-						_, err = k8sManager.alphaClient.CiliumStaticIPs(ipCrd.Namespace).Update(context.TODO(), ipCrd, v1.UpdateOptions{})
-						if err != nil {
-							log.Errorf("update statip ip status failed, when unbind ip: %s for pod: %s on node: %s, error is %s.",
-								ip, podFullName, node, err)
-						}
-						log.Debugf("unbind static ip %s for pod %s on node: %s success.", ip, podFullName, node)
-						return
-					} else {
-						// static ip seems already unbound, so we just need to update the csip status
-						ipCrd.Status.IPStatus = v2alpha1.Unbind
-						ipCrd.Status.UpdateTime = slim_metav1.Time(v1.Time{
-							Time: now,
-						})
-						_, err := k8sManager.alphaClient.CiliumStaticIPs(ipCrd.Namespace).Update(context.TODO(), ipCrd, v1.UpdateOptions{})
-						if err != nil {
-							log.Errorf("update statip ip status failed, when unbind ip: %s for pod: %s on node: %s, error is %s.",
-								ip, podFullName, node, err)
-						}
-						return
-					}
+					k8sManager.UpdateCiliumStaticIP(ipCrd, v2alpha1.Unbind, "")
 				}
 			}
 		}
@@ -436,12 +340,7 @@ func (m extraManager) updateStaticIP(ipCrd *v2alpha1.CiliumStaticIP) {
 					err := n.Ops().ReleaseStaticIP(ip, pool)
 					if err != nil {
 						errMsg := fmt.Sprintf("delete static ip: %v for pod %v failed: %s.", ip, podFullName, err)
-						ipCrd.Status.Phase = errMsg
-						_, err = k8sManager.alphaClient.CiliumStaticIPs(ipCrd.Namespace).Update(context.TODO(), ipCrd, v1.UpdateOptions{})
-						if err != nil {
-							log.Errorf("delete statip ip failed, when delete ip: %s for pod: %s on node: %s, error is %s.",
-								ip, podFullName, node, err)
-						}
+						k8sManager.UpdateCiliumStaticIP(ipCrd, v2alpha1.WaitingForRelease, errMsg)
 						return
 					}
 					log.Infof("delete static ip %s for pod %s on node %s success.", ip, podFullName, node)
@@ -818,4 +717,21 @@ func (extraManager) UpdateCiliumIPPoolStatus(pool string, node string, status, p
 	}
 
 	return nil
+}
+
+func (extraManager) UpdateCiliumStaticIP(csip *v2alpha1.CiliumStaticIP, status, phase string) {
+	now := time.Now()
+	podFullName := csip.Namespace + "/" + csip.Name
+
+	csip = csip.DeepCopy()
+	csip.Status.IPStatus = status
+	csip.Status.UpdateTime = slim_metav1.Time(v1.Time{
+		Time: now,
+	})
+	_, err := k8sManager.alphaClient.CiliumStaticIPs(csip.Namespace).Update(context.TODO(), csip, v1.UpdateOptions{})
+	if err != nil {
+		log.Errorf("update statip ip status failed, when assign ip: %s for pod: %s on node: %s, error is %s.",
+			csip.Spec.IP, podFullName, csip.Spec.NodeName, err)
+		return
+	}
 }

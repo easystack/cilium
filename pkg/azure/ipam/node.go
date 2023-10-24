@@ -47,7 +47,7 @@ func (n *Node) AllocateStaticIP(ctx context.Context, address string, interfaceId
 	return errors.New("AllocateStaticIP function for Azure ENI is not supported")
 }
 
-func (n *Node) UnbindStaticIP(ctx context.Context, release *ipam.ReleaseAction, pool string) error {
+func (n *Node) UnbindStaticIP(ctx context.Context, address string, poolID string) error {
 	return errors.New("UnbindStaticIP function for Azure ENI is not supported")
 }
 

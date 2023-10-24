@@ -749,40 +749,51 @@ func randomString(length int) string {
 	return string(b)
 }
 
-func (c *Client) UnassignPrivateIPAddressesRetainPort(ctx context.Context, eniID string, address []string) error {
-	log.Errorf("##### Do Unassign static ip addresses for nic %s, addresses to release is %s", eniID, address)
+func (c *Client) UnassignPrivateIPAddressesRetainPort(ctx context.Context, vpcID string, address string) error {
+	log.Errorf("##### Do Unassign static ip, subnetId is %s address is %s", vpcID, address)
 
-	if len(address) != 1 {
-		return errors.New("no ip address need to be released")
+	secondaryIpPort, err := c.getPortFromIP(vpcID, address)
+
+	if secondaryIpPort.DeviceID == "" {
+		log.Infof("no need to unassign, no deviceId found on port %s (address: %s)", secondaryIpPort.ID, address)
+		return nil
 	}
 
-	port, err := c.getPort(eniID)
+	port, err := c.getPort(secondaryIpPort.DeviceID)
 	if err != nil {
-		log.Errorf("failed to get port: %s, with error %s", eniID, err)
+		log.Errorf("failed to get port: %s, with error %s", secondaryIpPort.DeviceID, err)
 		return err
 	}
 
 	idx := -1
 
 	for i, pair := range port.AllowedAddressPairs {
-		if pair.IPAddress == address[0] {
+		if pair.IPAddress == address {
 			idx = i
 			break
 		}
 	}
 
 	if idx == -1 {
-		return errors.New(fmt.Sprintf("no address found attached in eni %v", eniID))
+		log.Errorf("no address found attached in eni %v", secondaryIpPort.ID)
+		return fmt.Errorf("no address found attached in eni %v", secondaryIpPort.ID)
+	} else {
+		err = c.deletePortAllowedAddressPairs(port.ID, []ports.AddressPair{
+			{
+				IPAddress:  address,
+				MACAddress: port.MACAddress,
+			},
+		})
 	}
 
-	err = c.deletePortAllowedAddressPairs(eniID, []ports.AddressPair{
-		{
-			IPAddress:  address[0],
-			MACAddress: port.MACAddress,
-		},
-	})
+	emptyDeviceID := ""
+	opts := ports.UpdateOpts{
+		DeviceID: &emptyDeviceID,
+	}
+	_, err = ports.Update(c.neutronV2, secondaryIpPort.ID, opts).Extract()
+
 	if err != nil {
-		log.Errorf("failed to update port allowed-address-pairs with error: %v", err)
+		log.Errorf("failed to update port: %s, with error %s", secondaryIpPort.ID, err)
 		return err
 	}
 
