@@ -114,7 +114,7 @@ type NodeOperations interface {
 	AllocateStaticIP(ctx context.Context, address string, interfaceId string, pool Pool) error
 
 	// UnbindStaticIP is called to unbind the static ip from eni but retain the neutron port
-	UnbindStaticIP(ctx context.Context, release *ReleaseAction, pool string) error
+	UnbindStaticIP(ctx context.Context, address string, poolID string) error
 
 	// ReleaseStaticIP is called to delete the neutron port
 	ReleaseStaticIP(address string, pool string) error

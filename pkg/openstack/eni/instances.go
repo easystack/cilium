@@ -32,7 +32,7 @@ type OpenStackAPI interface {
 	AssignPrivateIPAddresses(ctx context.Context, eniID string, toAllocate int) ([]string, error)
 	UnassignPrivateIPAddresses(ctx context.Context, eniID string, addresses []string) (isEmpty bool, err error)
 	AddTagToNetworkInterface(ctx context.Context, eniID string, tags string) error
-	UnassignPrivateIPAddressesRetainPort(ctx context.Context, eniID string, address []string) error
+	UnassignPrivateIPAddressesRetainPort(ctx context.Context, subNetID string, address string) error
 	AssignStaticPrivateIPAddresses(ctx context.Context, eniID string, address string) error
 	DeleteNeutronPort(address string, networkID string) error
 	ListNetworkInterface(ctx context.Context, instanceID string) ([]attachinterfaces.Interface, error)

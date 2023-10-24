@@ -104,7 +104,7 @@ func (n *nodeOperationsMock) AllocateStaticIP(ctx context.Context, address strin
 	panic("implement me")
 }
 
-func (n *nodeOperationsMock) UnbindStaticIP(ctx context.Context, release *ReleaseAction, pool string) error {
+func (n *nodeOperationsMock) UnbindStaticIP(ctx context.Context, address string, pool string) error {
 	//TODO implement me
 	panic("implement me")
 }
