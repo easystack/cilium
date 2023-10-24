@@ -17,7 +17,6 @@ import (
 	slimclientset "github.com/cilium/cilium/pkg/k8s/slim/k8s/client/clientset/versioned"
 	"github.com/cilium/cilium/pkg/k8s/utils"
 	k8sErrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/api/meta"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/tools/cache"
@@ -27,8 +26,6 @@ import (
 )
 
 var (
-	// slimNodeStore contains all cluster nodes store as slim_core.Node
-	slimNodeStore cache.Store
 
 	// crdPoolStore contains all cluster pool store as v2alpha1.CiliumPodIPPool
 	crdPoolStore cache.Store
@@ -36,11 +33,10 @@ var (
 	// crdPoolStore contains all cluster csip store as v2alpha1.CiliumStaticIP
 	staticIPStore cache.Store
 
-	nodeController     cache.Controller
 	poolController     cache.Controller
 	staticIPController cache.Controller
 
-	// multiPoolExtraSynced is closed once the slimNodeStore and crdPoolStore is synced
+	// multiPoolExtraSynced is closed once the crdPoolStore is synced
 	// with k8s.
 	multiPoolExtraSynced = make(chan struct{})
 
@@ -75,28 +71,14 @@ const (
 	CreatePoolSuccessPhase = "Created crd pool success."
 )
 
-type set map[string]struct{}
-type poolSet map[string]poolState
-type poolState int
-
 const (
 	poolAnnotation = "ipam.cilium.io/openstack-ip-pool"
 	poolLabel      = "openstack-ip-pool"
 )
 
-type extraOperation interface {
-	ListK8sSlimNode() []*slim_corev1.Node
-	GetK8sSlimNode(nodeName string) (*slim_corev1.Node, error)
-	LabelNodeWithPool(nodeName string, labels map[string]string) error
-	ListCiliumIPPool() []*v2alpha1.CiliumPodIPPool
-	updateCiliumNodeManagerPool()
-	listStaticIPs() []*v2alpha1.CiliumStaticIP
-}
-
 func InitIPAMOpenStackExtra(slimClient slimclientset.Interface, alphaClient v2alpha12.CiliumV2alpha1Interface, stopCh <-chan struct{}) {
 	multiPoolExtraInit.Do(func() {
 
-		nodesInit(slimClient, stopCh)
 		poolsInit(alphaClient, stopCh)
 
 		k8sManager.client = slimClient
@@ -108,32 +90,6 @@ func InitIPAMOpenStackExtra(slimClient slimclientset.Interface, alphaClient v2al
 		close(multiPoolExtraSynced)
 	})
 
-}
-
-// nodesInit starts up a node watcher to handle node events.
-func nodesInit(slimClient slimclientset.Interface, stopCh <-chan struct{}) {
-	slimNodeStore, nodeController = informer.NewInformer(
-		utils.ListerWatcherFromTyped[*slim_corev1.NodeList](slimClient.CoreV1().Nodes()),
-		&slim_corev1.Node{},
-		0,
-		cache.ResourceEventHandlerFuncs{
-			AddFunc: func(obj interface{}) {
-				updateNode(obj)
-			},
-			UpdateFunc: func(oldObj, newObj interface{}) {
-				// little optimize for invoke updateNode
-				if compareNodeAnnotationAndLabelChange(oldObj, newObj) {
-					updateNode(newObj)
-				}
-			},
-		},
-		transformToNode,
-	)
-	go func() {
-		nodeController.Run(stopCh)
-	}()
-
-	cache.WaitForCacheSync(stopCh, nodeController.HasSynced)
 }
 
 // poolsInit starts up a node watcher to handle pool events.
@@ -233,31 +189,6 @@ func (extraManager) ListCiliumIPPool() []*v2alpha1.CiliumPodIPPool {
 	return out
 }
 
-// ListK8sSlimNode returns all the *slim_corev1.Node from slimNodeStore
-func (extraManager) ListK8sSlimNode() []*slim_corev1.Node {
-	nodesInt := slimNodeStore.List()
-	out := make([]*slim_corev1.Node, 0, len(nodesInt))
-	for i := range nodesInt {
-		out = append(out, nodesInt[i].(*slim_corev1.Node))
-	}
-	return out
-}
-
-// GetK8sSlimNode returns *slim_corev1.Node by nodeName which stored in slimNodeStore
-func (extraManager) GetK8sSlimNode(nodeName string) (*slim_corev1.Node, error) {
-	nodeInterface, exists, err := slimNodeStore.GetByKey(nodeName)
-	if err != nil {
-		return nil, err
-	}
-	if !exists {
-		return nil, k8sErrors.NewNotFound(schema.GroupResource{
-			Group:    "core",
-			Resource: "Node",
-		}, nodeName)
-	}
-	return nodeInterface.(*slim_corev1.Node), nil
-}
-
 // GetCiliumPodIPPool returns *v2alpha1.CiliumPodIPPool by name which stored in crdPoolStore
 func (extraManager) GetCiliumPodIPPool(name string) (*v2alpha1.CiliumPodIPPool, error) {
 	poolInterface, exists, err := crdPoolStore.GetByKey(name)
@@ -280,34 +211,51 @@ func (extraManager) LabelNodeWithPool(nodeName string, labels map[string]string)
 		return err
 	}
 
-	oldNode = oldNode.DeepCopy()
-	oldLabel := oldNode.GetLabels()
+	newNode := oldNode.DeepCopy()
+	newLabels := newNode.GetLabels()
 
 	// remove all the old pool label
-	for k, _ := range oldLabel {
+	for k, _ := range newLabels {
 		if strings.HasPrefix(k, poolLabel) {
-			delete(oldLabel, k)
+			delete(newLabels, k)
 		}
 	}
 
 	// label all the updated pool
 	for k, v := range labels {
-		oldLabel[k] = v
+		newLabels[k] = v
 	}
-	oldNode.SetLabels(oldLabel)
-	_, err = k8sManager.client.CoreV1().Nodes().Update(context.Background(), oldNode, v1.UpdateOptions{})
+	if judgeLabelDeepEqual(oldNode.GetLabels(), newLabels) {
+		return nil
+	}
+	newNode.SetLabels(newLabels)
+	_, err = k8sManager.client.CoreV1().Nodes().Update(context.Background(), newNode, v1.UpdateOptions{})
+
 	return err
 }
 
-func compareNodeAnnotationAndLabelChange(oldObj, newObj interface{}) bool {
+func judgeLabelDeepEqual(old, new map[string]string) bool {
+	if ((old != nil) && (new != nil)) || ((old == nil) != (new == nil)) {
+		in, other := &old, &new
+		if other == nil {
+			return false
+		}
 
-	oldAccessor, _ := meta.Accessor(oldObj)
-	newAccessor, _ := meta.Accessor(newObj)
-	if oldAccessor.GetAnnotations()[poolAnnotation] != newAccessor.GetAnnotations()[poolAnnotation] {
-		return true
+		if len(*in) != len(*other) {
+			return false
+		} else {
+			for key, inValue := range *in {
+				if otherValue, present := (*other)[key]; !present {
+					return false
+				} else {
+					if inValue != otherValue {
+						return false
+					}
+				}
+			}
+		}
 	}
-
-	return false
+	return true
 }
 
 // updateStaticIP responds for reconcile the csip event
@@ -716,24 +664,6 @@ func addPool(obj interface{}) {
 func deletePool(obj interface{}) {
 	key, _ := queueKeyFunc(obj)
 	delete(k8sManager.nodeManager.pools, key)
-}
-
-func updateNode(obj interface{}) {
-	key, _ := queueKeyFunc(obj)
-	var retryCount int
-loop:
-	node, ok := k8sManager.nodeManager.nodes[key]
-	if !ok && retryCount < 3 {
-		<-time.After(1 * time.Second)
-		retryCount++
-		goto loop
-	}
-	if ok {
-		err := k8sManager.nodeManager.SyncMultiPool(node)
-		if err != nil {
-			log.Error(err)
-		}
-	}
 }
 
 func (extraManager) CreateDefaultPool(subnets ipamTypes.SubnetMap) {
