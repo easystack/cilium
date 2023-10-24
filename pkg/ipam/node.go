@@ -120,6 +120,10 @@ type Node struct {
 	// limiting.
 	k8sSync *trigger.Trigger
 
+	// instanceSync is the trigger used to fetch instance information
+	// with external APIs or systems.
+	instanceSync *trigger.Trigger
+
 	// ops is the IPAM implementation to used for this node
 	ops NodeOperations
 
@@ -359,7 +363,9 @@ func calculateExcessIPs(availableIPs, usedIPs, preAllocate, minAllocate, maxAbov
 
 func (n *Node) requirePoolMaintenance() {
 	for _, p := range n.pools {
-		p.requirePoolMaintenance()
+		if p.allocationNeeded() || p.releaseNeeded() {
+			p.requirePoolMaintenance()
+		}
 	}
 }
 
@@ -377,6 +383,12 @@ func (n *Node) InstanceID() (id string) {
 	}
 	n.mutex.RUnlock()
 	return
+}
+
+func (n *Node) instanceAPISync(ctx context.Context, instanceID string) (time.Time, bool) {
+	syncTime := n.manager.instancesAPI.InstanceSync(ctx, instanceID)
+	success := !syncTime.IsZero()
+	return syncTime, success
 }
 
 // UpdatedResource is called when an update to the CiliumNode has been
@@ -445,6 +457,7 @@ func (n *Node) recalculate() {
 			statistics.NeededIPs = 0
 			statistics.ExcessIPs = 0
 		}
+		n.mutex.Unlock()
 		return
 	}
 
@@ -1028,7 +1041,7 @@ func (n *Node) MaintainIPPool(ctx context.Context) error {
 	n.recalculate()
 
 	if instanceMutated || err != nil {
-		n.manager.resyncTrigger.Trigger()
+		n.instanceSync.Trigger()
 	}
 
 	return err
@@ -1089,7 +1102,7 @@ func (n *Node) syncToAPIServer() (err error) {
 	// acknowledged the release handshake. Therefore, having an already
 	// released IP in the pool is fine, as the agent will ignore it.
 
-	pool := n.CrdPools()
+	crdPools := n.CrdPools()
 
 	// Always update the status first to ensure that the IPAM information
 	// is synced for all addresses that are marked as available.
@@ -1117,7 +1130,7 @@ func (n *Node) syncToAPIServer() (err error) {
 	}
 
 	for retry := 0; retry < 2; retry++ {
-		node.Spec.IPAM.CrdPools = pool
+		node.Spec.IPAM.CrdPools = crdPools
 		scopedLog.WithField("poolCount", len(node.Spec.IPAM.CrdPools)).Debug("Updating node in apiserver")
 
 		// The PreAllocate value is added here rather than where the CiliumNode

@@ -437,6 +437,8 @@ func (p *crdPool) releaseNeeded() (needed bool) {
 }
 
 func (p *crdPool) GetAvailable() ipamTypes.AllocationMap {
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
 	return p.available
 }
 

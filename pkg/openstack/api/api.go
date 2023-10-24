@@ -198,15 +198,30 @@ func newIdentityV3ClientOrDie(p *gophercloud.ProviderClient) (*gophercloud.Servi
 
 // GetInstances returns the list of all instances including their ENIs as
 // instanceMap
-func (c *Client) GetInstances(ctx context.Context, vpcs ipamTypes.VirtualNetworkMap, subnets ipamTypes.SubnetMap) (*ipamTypes.InstanceMap, error) {
+func (c *Client) GetInstances(ctx context.Context, vpcs ipamTypes.VirtualNetworkMap, subnets ipamTypes.SubnetMap, instanceIDs []string) (*ipamTypes.InstanceMap, error) {
 	instances := ipamTypes.NewInstanceMap()
 	log.Errorf("######## Do Get instances")
-	var networkInterfaces []ports.Port
-	var err error
+	for _, instanceId := range instanceIDs {
+		instance, err := c.GetInstance(ctx, vpcs, subnets, instanceId)
+		if err != nil {
+			return nil, err
+		}
+		instances.UpdateInstance(instanceId, instance)
+	}
 
-	networkInterfaces, err = c.describeNetworkInterfaces()
+	return instances, nil
+}
+
+func (c *Client) GetInstance(ctx context.Context, vpcs ipamTypes.VirtualNetworkMap, subnets ipamTypes.SubnetMap, instanceID string) (instance *ipamTypes.Instance, err error) {
+	log.Errorf("######## Do Get instance, id is %s", instanceID)
+
+	instance = &ipamTypes.Instance{}
+	instance.Interfaces = map[string]ipamTypes.InterfaceRevision{}
+	var networkInterfaces []ports.Port
+
+	networkInterfaces, err = c.describeNetworkInterfacesByInstance(instanceID)
 	if err != nil {
-		return nil, err
+		return instance, err
 	}
 
 	for _, iface := range networkInterfaces {
@@ -214,19 +229,21 @@ func (c *Client) GetInstances(ctx context.Context, vpcs ipamTypes.VirtualNetwork
 			continue
 		}
 		log.Errorf("######## networkInterface is %+v", iface)
-		id, eni, err := parseENI(&iface, subnets)
+		_, eni, err := parseENI(&iface, subnets)
 		if err != nil {
 			log.Errorf("######## Failed to pares eni %+v, with error %s", iface, err)
 			continue
 		}
 
-		log.Errorf("######## Update instancesMap, instanceID is %s, eni is: %+v", id, eni)
-		if id != "" {
-			instances.Update(id, ipamTypes.InterfaceRevision{Resource: eni})
+		if eni.InterfaceID() != "" {
+			instance.Interfaces[eni.InterfaceID()] = ipamTypes.InterfaceRevision{
+				Resource: eni,
+			}
 		}
 	}
+	log.Errorf("######## Update instances, instanceID is %s, iface is: %+v", instanceID, instance.Interfaces)
 
-	return instances, nil
+	return
 }
 
 // GetVpcs retrieves and returns all Vpcs
@@ -661,13 +678,14 @@ func validIPAddress(ipStr string, cidr *net.IPNet) bool {
 	return false
 }
 
-// describeNetworkInterfaces lists all ENIs
-func (c *Client) describeNetworkInterfaces() ([]ports.Port, error) {
+// describeNetworkInterfacesByInstance lists all ENIs by instance
+func (c *Client) describeNetworkInterfacesByInstance(instanceID string) ([]ports.Port, error) {
 	var result []ports.Port
 	var err error
 
 	opts := ports.ListOpts{
 		ProjectID: c.filters[ProjectID],
+		DeviceID:  instanceID,
 	}
 
 	err = ports.List(c.neutronV2, opts).EachPage(func(page pagination.Page) (bool, error) {

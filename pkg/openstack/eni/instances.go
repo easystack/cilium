@@ -20,8 +20,9 @@ import (
 
 // OpenStackAPI is the API surface used of the ECS API
 type OpenStackAPI interface {
-	GetInstances(ctx context.Context, vpcs ipamTypes.VirtualNetworkMap, subnets ipamTypes.SubnetMap) (*ipamTypes.InstanceMap, error)
+	GetInstances(ctx context.Context, vpcs ipamTypes.VirtualNetworkMap, subnets ipamTypes.SubnetMap, instanceIDs []string) (*ipamTypes.InstanceMap, error)
 	GetSubnets(ctx context.Context) (ipamTypes.SubnetMap, error)
+	GetInstance(ctx context.Context, vpcs ipamTypes.VirtualNetworkMap, subnets ipamTypes.SubnetMap, instanceId string) (*ipamTypes.Instance, error)
 	GetVpcs(ctx context.Context) (ipamTypes.VirtualNetworkMap, error)
 	GetSecurityGroups(ctx context.Context) (types.SecurityGroupMap, error)
 	CreateNetworkInterface(ctx context.Context, subnetID, netID, instanceID string, groups []string, pool ipam.Pool) (string, *eniTypes.ENI, error)
@@ -41,6 +42,7 @@ type OpenStackAPI interface {
 // by calling resync() regularly.
 type InstancesManager struct {
 	mutex          lock.RWMutex
+	resyncLock     lock.RWMutex
 	instances      *ipamTypes.InstanceMap
 	subnets        ipamTypes.SubnetMap
 	vpcs           ipamTypes.VirtualNetworkMap
@@ -61,7 +63,10 @@ func NewInstancesManager(api OpenStackAPI) *InstancesManager {
 // CreateNode is called on discovery of a new node and returns the ENI node
 // allocation implementation for the new node
 func (m *InstancesManager) CreateNode(obj *v2.CiliumNode, node *ipam.Node) ipam.NodeOperations {
-	return &Node{k8sObj: obj, manager: m, node: node, instanceID: node.InstanceID()}
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+	m.instances.UpdateInstance(obj.InstanceID(), nil)
+	return &Node{k8sObj: obj, manager: m, node: node, instanceID: obj.InstanceID()}
 }
 
 // HasInstance returns whether the instance is in instances
@@ -87,51 +92,11 @@ func (m *InstancesManager) GetPoolQuota() ipamTypes.PoolQuotaMap {
 // cache in the instanceManager. It returns the time when the resync has
 // started or time.Time{} if it did not complete.
 func (m *InstancesManager) Resync(ctx context.Context) time.Time {
-	resyncStart := time.Now()
-
-	vpcs, err := m.api.GetVpcs(ctx)
-	if err != nil {
-		log.WithError(err).Warning("Unable to synchronize VPC list")
-		return time.Time{}
-	}
-
-	subnets, err := m.api.GetSubnets(ctx)
-	if err != nil {
-		log.WithError(err).Warning("Unable to retrieve VPC vSwitches list")
-		return time.Time{}
-	}
-
-	securityGroups, err := m.api.GetSecurityGroups(ctx)
-	if err != nil {
-		log.WithError(err).Warning("Unable to retrieve ECS security group list")
-		return time.Time{}
-	}
-
-	instances, err := m.api.GetInstances(ctx, vpcs, subnets)
-	if err != nil {
-		log.WithError(err).Warning("Unable to synchronize ECS interface list")
-		return time.Time{}
-	}
-
-	log.WithFields(logrus.Fields{
-		"numInstances":      instances.NumInstances(),
-		"numVPCs":           len(vpcs),
-		"numSubnets":        len(subnets),
-		"numSecurityGroups": len(securityGroups),
-	}).Info("Synchronized OpenStack ENI information")
-
-	m.mutex.Lock()
-	m.instances = instances
-	m.subnets = subnets
-	m.vpcs = vpcs
-	m.securityGroups = securityGroups
-	m.mutex.Unlock()
-
-	if subnets != nil {
-		ipam.SyncPoolToAPIServer(subnets)
-	}
-
-	return resyncStart
+	// Full API resync should block the instance incremental resync from all nodes.
+	m.resyncLock.Lock()
+	defer m.resyncLock.Unlock()
+	// An empty instanceID indicates the full resync.
+	return m.resync(ctx, "")
 }
 
 // GetSubnet returns the subnet by subnet ID
@@ -235,4 +200,90 @@ func (m *InstancesManager) IncludeIP(ip string) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 	delete(m.excludeIPs, ip)
+}
+
+func (m *InstancesManager) InstanceSync(ctx context.Context, instanceID string) time.Time {
+	// Instance incremental resync from different nodes should be executed in parallel,
+	// but must block the full API resync.
+	m.resyncLock.RLock()
+	defer m.resyncLock.RUnlock()
+	return m.resync(ctx, instanceID)
+}
+
+func (m *InstancesManager) resync(ctx context.Context, instanceID string) time.Time {
+	resyncStart := time.Now()
+
+	vpcs, err := m.api.GetVpcs(ctx)
+	if err != nil {
+		log.WithError(err).Warning("Unable to synchronize VPC list")
+		return time.Time{}
+	}
+
+	subnets, err := m.api.GetSubnets(ctx)
+	if err != nil {
+		log.WithError(err).Warning("Unable to retrieve VPC vSwitches list")
+		return time.Time{}
+	}
+
+	securityGroups, err := m.api.GetSecurityGroups(ctx)
+	if err != nil {
+		log.WithError(err).Warning("Unable to retrieve ECS security group list")
+		return time.Time{}
+	}
+
+	// An empty instanceID indicates that this is full resync, ENIs from all instances
+	// will be refetched from EC2 API and updated to the local cache. Otherwise only
+	// the given instance will be updated.
+	if instanceID == "" {
+		m.mutex.Lock()
+		instanceIds := m.getInstanceIdLocked()
+		m.mutex.Unlock()
+		instances, err := m.api.GetInstances(ctx, vpcs, subnets, instanceIds)
+		if err != nil {
+			log.WithError(err).Warning("Unable to synchronize ECS interface list")
+			return time.Time{}
+		}
+
+		log.WithFields(logrus.Fields{
+			"numInstances":      instances.NumInstances(),
+			"numVPCs":           len(vpcs),
+			"numSubnets":        len(subnets),
+			"numSecurityGroups": len(securityGroups),
+		}).Info("Synchronized OpenStack ENI information")
+
+		m.mutex.Lock()
+		defer m.mutex.Unlock()
+		m.instances = instances
+	} else {
+		instance, err := m.api.GetInstance(ctx, vpcs, subnets, instanceID)
+		if err != nil {
+			log.WithError(err).Warning("Unable to synchronize openstack interface list")
+			return time.Time{}
+		}
+
+		log.WithFields(logrus.Fields{
+			"instance":          instanceID,
+			"numVPCs":           len(vpcs),
+			"numSubnets":        len(subnets),
+			"numSecurityGroups": len(securityGroups),
+		}).Info("Synchronized ENI information for the corresponding instance")
+
+		m.mutex.Lock()
+		defer m.mutex.Unlock()
+		m.instances.UpdateInstance(instanceID, instance)
+	}
+
+	if subnets != nil {
+		ipam.SyncPoolToAPIServer(subnets)
+	}
+
+	m.subnets = subnets
+	m.vpcs = vpcs
+	m.securityGroups = securityGroups
+
+	return resyncStart
+}
+
+func (m *InstancesManager) getInstanceIdLocked() (instanceIds []string) {
+	return m.instances.GetInstanceIds()
 }

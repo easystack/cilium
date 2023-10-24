@@ -254,3 +254,8 @@ func (m *InstancesManager) ExcludeIP(ip string) {
 func (m *InstancesManager) IncludeIP(ip string) {
 	log.Errorf("IncludeIP function for AWS ENI is not supported.")
 }
+
+func (m *InstancesManager) InstanceSync(ctx context.Context, instanceID string) time.Time {
+	log.Errorf("InstanceSync function for Alibaba ENI is not supported.")
+	return time.Time{}
+}
