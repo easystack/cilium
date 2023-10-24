@@ -461,6 +461,7 @@ func (n *Node) recalculate() {
 		return
 	}
 
+	n.poolAvailable = a
 	n.stats.UsedIPs = 0
 
 	for _, poolUsed := range n.resource.Status.IPAM.PoolUsed {
@@ -1302,12 +1303,8 @@ func (n *Node) CrdPools() (pools map[string]ipamTypes.AllocationMap) {
 	defer n.mutex.Unlock()
 
 	pools = map[string]ipamTypes.AllocationMap{}
-	for name, p := range n.pools {
-		po := map[string]ipamTypes.AllocationIP{}
-		for k, allocationIP := range p.GetAvailable() {
-			po[k] = allocationIP
-		}
-		pools[name.String()] = po
+	for p, allocationMap := range n.poolAvailable {
+		pools[p.String()] = allocationMap
 	}
 	return
 }

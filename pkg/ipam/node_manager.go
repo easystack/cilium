@@ -321,6 +321,7 @@ func (n *NodeManager) Upsert(resource *v2.CiliumNode) {
 			logLimiter:          logging.NewLimiter(10*time.Second, 3), // 1 log / 10 secs, burst of 3
 			pools:               map[Pool]pool{},
 			poolStats:           map[Pool]*Statistics{},
+			poolAvailable:       map[Pool]ipamTypes.AllocationMap{},
 		}
 
 		ctx, cancel := context.WithCancel(context.Background())
