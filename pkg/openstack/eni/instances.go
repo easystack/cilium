@@ -25,7 +25,7 @@ type OpenStackAPI interface {
 	GetInstance(ctx context.Context, vpcs ipamTypes.VirtualNetworkMap, subnets ipamTypes.SubnetMap, instanceId string) (*ipamTypes.Instance, error)
 	GetVpcs(ctx context.Context) (ipamTypes.VirtualNetworkMap, error)
 	GetSecurityGroups(ctx context.Context) (types.SecurityGroupMap, error)
-	CreateNetworkInterface(ctx context.Context, subnetID, netID, instanceID string, groups []string, pool ipam.Pool) (string, *eniTypes.ENI, error)
+	CreateNetworkInterface(ctx context.Context, subnetID, netID, instanceID string, groups []string, pool ipam.Pool, maxENICount int) (string, *eniTypes.ENI, error)
 	DeleteNetworkInterface(ctx context.Context, eniID string) error
 	AttachNetworkInterface(ctx context.Context, instanceID, eniID string) error
 	DetachNetworkInterface(ctx context.Context, instanceID, eniID string) error

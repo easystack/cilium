@@ -55,6 +55,7 @@ const (
 
 const (
 	PortNotFoundErr = "port not found"
+	IfaceLimitErr   = "reaches the eni upper limit"
 )
 
 var maxAttachRetries = wait.Backoff{
@@ -314,8 +315,16 @@ func (c *Client) GetSecurityGroups(ctx context.Context) (types.SecurityGroupMap,
 }
 
 // CreateNetworkInterface creates an ENI with the given parameters
-func (c *Client) CreateNetworkInterface(ctx context.Context, subnetID, netID, instanceID string, groups []string, pool ipam.Pool) (string, *eniTypes.ENI, error) {
+func (c *Client) CreateNetworkInterface(ctx context.Context, subnetID, netID, instanceID string, groups []string, pool ipam.Pool, maxENICount int) (string, *eniTypes.ENI, error) {
 	log.Errorf("######## Do create interface subnetid is: %s, networkid is: %s", subnetID, netID)
+
+	ifaces, err := c.describeNetworkInterfacesByInstance(instanceID)
+	if err != nil {
+		return "", nil, err
+	}
+	if len(ifaces) >= maxENICount {
+		return "", nil, errors.New(IfaceLimitErr)
+	}
 
 	opt := PortCreateOpts{
 		Name:        fmt.Sprintf(VMInterfaceName+"-%s-%s", pool, randomString(10)),
