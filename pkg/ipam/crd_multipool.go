@@ -296,6 +296,8 @@ func (p *crdPool) handleMultiPoolIPAllocation(ctx context.Context, a *maintenanc
 			"selectedInterface": a.allocation.InterfaceID,
 			"ipsToAllocate":     a.allocation.AvailableForAllocation,
 		}).WithError(err).Warning("Unable to assign additional IPs to interface, will create new interface")
+
+		return false, err
 	}
 
 	return p.node.createInterface(ctx, a.allocation, p.name)
