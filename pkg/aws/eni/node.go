@@ -92,6 +92,10 @@ func (n *Node) ReleaseStaticIP(address string, pool string) error {
 	return errors.New("ReleaseStaticIP function for AWS ENI is not supported")
 }
 
+func (n *Node) DeleteInterface(ctx context.Context, scopedLog *logrus.Entry, enis []string, pool string) error {
+	return errors.New("ReleaseStaticIP function for AWS ENI is not supported")
+}
+
 // NewNode returns a new Node
 func NewNode(node *ipam.Node, k8sObj *v2.CiliumNode, manager *InstancesManager) *Node {
 	return &Node{

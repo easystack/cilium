@@ -61,6 +61,9 @@ type NodeOperations interface {
 	// AllocationAction.MaxIPsToAllocate.
 	CreateInterface(ctx context.Context, allocation *AllocationAction, scopedLog *logrus.Entry, pool Pool) (int, string, error)
 
+	// DeleteInterface is called to delete interfaces
+	DeleteInterface(ctx context.Context, scopedLog *logrus.Entry, enis []string, pool string) error
+
 	// ResyncInterfacesAndIPs is called to synchronize the latest list of
 	// interfaces and IPs associated with the node. This function is called
 	// sparingly as this information is kept in sync based on the success

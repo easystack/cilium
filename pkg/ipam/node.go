@@ -633,6 +633,9 @@ type ReleaseAction struct {
 
 	// IPsToRelease is the list of IPs to release
 	IPsToRelease []string
+
+	// IPsToRelease is the list of IPs which has no secondary ip address
+	EmptyInterfaceID []string
 }
 
 // maintenanceAction represents the resources available for allocation for a
@@ -791,7 +794,7 @@ func (n *Node) deleteLocalReleaseStatus(ip string) {
 // * released           : IP successfully released. Set by operator
 //
 // Handshake would be aborted if there are new allocations and the node doesn't have IPs in excess anymore.
-func (n *Node) handleIPRelease(ctx context.Context, a *maintenanceAction) (instanceMutated bool, err error) {
+func (n *Node) handleIPRelease(ctx context.Context, a *maintenanceAction, pool string) (instanceMutated bool, err error) {
 	scopedLog := n.logger()
 	var ipsToMark []string
 	var ipsToRelease []string
@@ -874,6 +877,14 @@ func (n *Node) handleIPRelease(ctx context.Context, a *maintenanceAction) (insta
 		})
 		scopedLog.Info("Releasing excess IPs from node")
 		start := time.Now()
+
+		if len(a.release.EmptyInterfaceID) > 0 {
+			err := n.ops.DeleteInterface(ctx, scopedLog, a.release.EmptyInterfaceID, pool)
+			if err != nil {
+				scopedLog.Error("Releasing excess enis from node failed: %s", err)
+			}
+		}
+
 		err := n.ops.ReleaseIPs(ctx, a.release)
 		if err == nil {
 			n.manager.metricsAPI.ReleaseAttempt(releaseIP, success, string(a.release.PoolID), metrics.SinceInSeconds(start))
@@ -961,7 +972,7 @@ func (n *Node) maintainIPPool(ctx context.Context) (instanceMutated bool, err er
 		return false, nil
 	}
 
-	if instanceMutated, err := n.handleIPRelease(ctx, a); instanceMutated || err != nil {
+	if instanceMutated, err := n.handleIPRelease(ctx, a, ""); instanceMutated || err != nil {
 		return instanceMutated, err
 	}
 

@@ -88,6 +88,10 @@ func (n *Node) ReleaseStaticIP(address string, pool string) error {
 	return errors.New("ReleaseStaticIP function for Alibaba ENI is not supported")
 }
 
+func (n *Node) DeleteInterface(ctx context.Context, scopedLog *logrus.Entry, enis []string, pool string) error {
+	return errors.New("ReleaseStaticIP function for Alibaba ENI is not supported")
+}
+
 // UpdatedNode is called when an update to the CiliumNode is received.
 func (n *Node) UpdatedNode(obj *v2.CiliumNode) {
 	n.mutex.Lock()

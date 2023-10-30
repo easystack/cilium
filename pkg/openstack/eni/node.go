@@ -64,7 +64,7 @@ type Node struct {
 	instanceID string
 
 	// poolsEnis is the list of eniIDs that belong to the ipam.Pool
-	poolsEnis map[ipam.Pool][]string
+	poolsEnis map[ipam.Pool]map[string]struct{}
 
 	ifaceMutex sync.Mutex
 }
@@ -200,12 +200,38 @@ func (n *Node) CreateInterface(ctx context.Context, allocation *ipam.AllocationA
 	}
 
 	n.enis[eniID] = *eni
-	n.poolsEnis[pool] = append(n.poolsEnis[pool], eniID)
+
+	if _, exist := n.poolsEnis[pool]; !exist {
+		n.poolsEnis[pool] = map[string]struct{}{}
+	}
+	n.poolsEnis[pool][eniID] = struct{}{}
 	scopedLog.Info("Attached ENI to instance with index:%d", index)
 
 	// Add the information of the created ENI to the instances manager
 	n.manager.UpdateENI(instanceID, eni)
 	return toAllocate, "", nil
+}
+
+func (n *Node) DeleteInterface(ctx context.Context, scopedLog *logrus.Entry, enis []string, pool string) error {
+	for _, eni := range enis {
+		err := n.manager.api.DetachNetworkInterface(ctx, n.instanceID, eni)
+		if err != nil {
+			scopedLog.Errorf("Detach network interface %s failed, error is %s", eni, err)
+			return err
+		}
+		delete(n.enis, eni)
+		if _, exist := n.poolsEnis[ipam.Pool(pool)]; exist {
+			delete(n.poolsEnis[ipam.Pool(pool)], eni)
+		}
+
+		err = n.manager.api.DeleteNetworkInterface(ctx, eni)
+		if err != nil {
+			scopedLog.Errorf("Delete network interface %s failed, error is %s", eni, err)
+			return err
+		}
+	}
+
+	return nil
 }
 
 // ResyncInterfacesAndIPs is called to retrieve and ENIs and IPs as known to
@@ -227,6 +253,7 @@ func (n *Node) ResyncInterfacesAndIPs(ctx context.Context, scopedLog *logrus.Ent
 	n.mutex.Lock()
 	defer n.mutex.Unlock()
 	n.enis = map[string]eniTypes.ENI{}
+	n.poolsEnis = map[ipam.Pool]map[string]struct{}{}
 	scopedLog.Infof("!!!!!!!!!!!!!!!!!! Do Resync nics and ips, instanceID is %s, limits: %+v, available is %t", instanceID, limits, limitsAvailable)
 
 	n.manager.ForeachInstance(instanceID,
@@ -241,7 +268,10 @@ func (n *Node) ResyncInterfacesAndIPs(ctx context.Context, scopedLog *logrus.Ent
 			n.enis[e.ID] = *e
 
 			if pool := e.Pool; pool != "" {
-				n.poolsEnis[ipam.Pool(pool)] = append(n.poolsEnis[ipam.Pool(pool)], e.ID)
+				if _, exist := n.poolsEnis[ipam.Pool(pool)]; !exist {
+					n.poolsEnis[ipam.Pool(pool)] = map[string]struct{}{}
+				}
+				n.poolsEnis[ipam.Pool(pool)][e.ID] = struct{}{}
 			}
 
 			if utils.IsExcludedByTags(e.Tags) {
@@ -355,7 +385,7 @@ func (n *Node) PrepareIPRelease(excessIPs int, scopedLog *logrus.Entry, pool ipa
 
 	// Iterate over ENIs on this node, select the ENI with the most
 	// addresses available for release
-	for _, eid := range n.poolsEnis[pool] {
+	for eid, _ := range n.poolsEnis[pool] {
 		var e eniTypes.ENI
 		var ok bool
 		if e, ok = n.enis[eid]; !ok {
@@ -370,9 +400,8 @@ func (n *Node) PrepareIPRelease(excessIPs int, scopedLog *logrus.Entry, pool ipa
 			continue
 		}
 
-		if utils.IsExcludedByTags(e.Tags) {
-			scopedLog.Infof("!!!!!!!!!!!! ENI %s is excluded by tags in PrepareIPRelease func", e.ID)
-			continue
+		if len(e.SecondaryIPSets) == 0 {
+			r.EmptyInterfaceID = append(r.EmptyInterfaceID, eid)
 		}
 
 		// Count free IP addresses on this ENI
@@ -398,9 +427,14 @@ func (n *Node) PrepareIPRelease(excessIPs int, scopedLog *logrus.Entry, pool ipa
 		}).Debug("ENI has unused IPs that can be released")
 		maxReleaseOnENI := math.IntMin(freeOnENICount, excessIPs)
 
-		r.InterfaceID = eid
-		r.PoolID = ipamTypes.PoolID(e.VPC.ID)
-		r.IPsToRelease = freeIpsOnENI[:maxReleaseOnENI]
+		firstENIWithFreeIPFound := r.IPsToRelease == nil
+		eniWithMoreFreeIPsFound := maxReleaseOnENI > len(r.IPsToRelease)
+		// Select the ENI with the most addresses available for release
+		if firstENIWithFreeIPFound || eniWithMoreFreeIPsFound {
+			r.InterfaceID = eid
+			r.PoolID = ipamTypes.PoolID(e.Subnet.ID)
+			r.IPsToRelease = freeIpsOnENI[:maxReleaseOnENI]
+		}
 	}
 
 	return r
@@ -585,7 +619,7 @@ func (n *Node) ResyncInterfacesAndIPsByPool(ctx context.Context, scopedLog *logr
 	n.mutex.Lock()
 	defer n.mutex.Unlock()
 	n.enis = map[string]eniTypes.ENI{}
-	n.poolsEnis = map[ipam.Pool][]string{}
+	n.poolsEnis = map[ipam.Pool]map[string]struct{}{}
 	scopedLog.Infof("!!!!!!!!!!!!!!!!!! Do Resync nics and ips, instanceID is %s, limits: %+v, available is %t", instanceID, limits, limitsAvailable)
 
 	n.manager.ForeachInstance(instanceID,
@@ -599,7 +633,12 @@ func (n *Node) ResyncInterfacesAndIPsByPool(ctx context.Context, scopedLog *logr
 
 			n.enis[e.ID] = *e
 
-			n.poolsEnis[ipam.Pool(e.Pool)] = append(n.poolsEnis[ipam.Pool(e.Pool)], e.ID)
+			if pool := e.Pool; pool != "" {
+				if _, exist := n.poolsEnis[ipam.Pool(pool)]; !exist {
+					n.poolsEnis[ipam.Pool(pool)] = map[string]struct{}{}
+				}
+				n.poolsEnis[ipam.Pool(pool)][e.ID] = struct{}{}
+			}
 
 			if utils.IsExcludedByTags(e.Tags) {
 				scopedLog.Infof("!!!!!!!!!!!! ENI %s is excluded by tags in Resync functions", e.ID)
@@ -681,13 +720,16 @@ func (n *Node) UnbindStaticIP(ctx context.Context, address string, vpcID string)
 
 func (n *Node) ReleaseStaticIP(address string, pool string) error {
 	if enis, ok := n.poolsEnis[ipam.Pool(pool)]; ok && len(enis) > 0 {
-		if _, ok = n.k8sObj.Status.OpenStack.ENIs[enis[0]]; !ok {
-			return fmt.Errorf("eni %s not found on node %s", enis[0], n.k8sObj.Name)
-		}
-		err := n.manager.api.DeleteNeutronPort(address, n.k8sObj.Status.OpenStack.ENIs[enis[0]].VPC.ID)
-		if err != nil {
-			log.Errorf("release static failed: %v", err)
-			return err
+		for eni, _ := range enis {
+			if _, ok = n.k8sObj.Status.OpenStack.ENIs[eni]; !ok {
+				return fmt.Errorf("eni %s not found on node %s", eni, n.k8sObj.Name)
+			}
+			err := n.manager.api.DeleteNeutronPort(address, n.k8sObj.Status.OpenStack.ENIs[eni].VPC.ID)
+			if err != nil {
+				log.Errorf("release static failed: %v", err)
+				return err
+			}
+			break
 		}
 	} else {
 		return fmt.Errorf("no eni found in pool: %s", pool)

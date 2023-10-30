@@ -315,7 +315,7 @@ func (p *crdPool) handleMultiPoolIPAllocation(ctx context.Context, a *maintenanc
 //
 // Handshake would be aborted if there are new allocations and the node doesn't have IPs in excess anymore.
 func (p *crdPool) handleIPRelease(ctx context.Context, a *maintenanceAction) (instanceMutated bool, err error) {
-	return p.node.handleIPRelease(ctx, a)
+	return p.node.handleIPRelease(ctx, a, string(p.name))
 }
 
 // abortNoLongerExcessIPs allows for aborting release of IP if new allocations on the node result in a change of excess

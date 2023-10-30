@@ -89,6 +89,11 @@ type nodeOperationsMock struct {
 	allocatedIPs []string
 }
 
+func (n *nodeOperationsMock) DeleteInterface(ctx context.Context, scopedLog *logrus.Entry, enis []string, pool string) error {
+	//TODO implement me
+	panic("implement me")
+}
+
 func (n *nodeOperationsMock) ResyncInterfacesAndIPsByPool(ctx context.Context, scopedLog *logrus.Entry) (poolAvailable map[Pool]ipamTypes.AllocationMap, stats ipamStats.InterfaceStats, err error) {
 	//TODO implement me
 	panic("implement me")
@@ -105,6 +110,11 @@ func (n *nodeOperationsMock) AllocateStaticIP(ctx context.Context, address strin
 }
 
 func (n *nodeOperationsMock) UnbindStaticIP(ctx context.Context, address string, pool string) error {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (n *Node) DeleteInterface(ctx context.Context, scopedLog *logrus.Entry, enis []string, pool string) error {
 	//TODO implement me
 	panic("implement me")
 }
