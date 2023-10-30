@@ -385,8 +385,13 @@ func (c *Client) AssignPrivateIPAddresses(ctx context.Context, eniID string, toA
 		return nil, err
 	}
 
+	var pairs []ports.AddressPair
+	failTimes := 0
 	var addresses []string
-	for i := 0; i < toAllocate; i++ {
+	for i := 0; i < toAllocate; {
+		if failTimes >= 5 {
+			break
+		}
 		opt := PortCreateOpts{
 			Name:        fmt.Sprintf(PodInterfaceName+"-%s", randomString(10)),
 			NetworkID:   port.NetworkID,
@@ -398,24 +403,26 @@ func (c *Client) AssignPrivateIPAddresses(ctx context.Context, eniID string, toA
 		p, err := c.createPort(opt)
 		if err != nil {
 			log.Errorf("######## Failed to create port with error %s", err)
-			return addresses, err
+			failTimes++
+			continue
 		}
-
-		err = c.addPortAllowedAddressPairs(eniID, []ports.AddressPair{
-			{
-				IPAddress:  p.IP,
-				MACAddress: port.MACAddress,
-			},
+		pairs = append(pairs, ports.AddressPair{
+			IPAddress:  p.IP,
+			MACAddress: port.MACAddress,
 		})
-		if err != nil {
-			log.Errorf("######## Failed to update port allowed-address-pairs with error: %+v", err)
-			err = c.deletePort(p.ID)
-			if err != nil {
-				log.Errorf("######## Failed to rollback to delete port with error: %+v", err)
-			}
-			return addresses, err
-		}
 		addresses = append(addresses, p.IP)
+		i++
+	}
+
+	log.Errorf("######## Do Assign ip addresses for nic %s, success times is %d, fail times is %d.", eniID, len(pairs), failTimes)
+
+	retryCount := 3
+retry:
+	err = c.addPortAllowedAddressPairs(eniID, pairs)
+	if err != nil && retryCount > 0 {
+		log.Infof("######## Failed to update allowed address pair for nic %s ,error is %s", eniID, err)
+		retryCount--
+		goto retry
 	}
 
 	return addresses, nil
