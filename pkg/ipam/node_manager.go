@@ -392,7 +392,7 @@ func (n *NodeManager) Upsert(resource *v2.CiliumNode) {
 			MetricsObserver: n.metricsAPI.ResyncTrigger(),
 			TriggerFunc: func(reasons []string) {
 				if syncTime, ok := node.instanceAPISync(ctx, resource.InstanceID()); ok {
-					node.manager.Resync(ctx, syncTime)
+					n.resyncNode(ctx, node, nil, syncTime)
 				}
 			},
 		})
@@ -510,37 +510,38 @@ func (n *NodeManager) resyncNode(ctx context.Context, node *Node, stats *resyncS
 		node.poolMaintainer.Trigger()
 	}
 
-	nodeStats := node.Stats()
+	if stats != nil {
+		nodeStats := node.Stats()
+		stats.mutex.Lock()
+		stats.totalUsed += nodeStats.UsedIPs
+		// availableOnNode is the number of available IPs on the node at this
+		// current moment. It does not take into account the number of IPs that
+		// can be allocated in the future.
+		availableOnNode := nodeStats.AvailableIPs - nodeStats.UsedIPs
+		stats.totalAvailable += availableOnNode
+		stats.totalNeeded += nodeStats.NeededIPs
+		stats.remainingInterfaces += nodeStats.RemainingInterfaces
+		stats.interfaceCandidates += nodeStats.InterfaceCandidates
+		stats.emptyInterfaceSlots += nodeStats.EmptyInterfaceSlots
+		stats.nodes++
 
-	stats.mutex.Lock()
-	stats.totalUsed += nodeStats.UsedIPs
-	// availableOnNode is the number of available IPs on the node at this
-	// current moment. It does not take into account the number of IPs that
-	// can be allocated in the future.
-	availableOnNode := nodeStats.AvailableIPs - nodeStats.UsedIPs
-	stats.totalAvailable += availableOnNode
-	stats.totalNeeded += nodeStats.NeededIPs
-	stats.remainingInterfaces += nodeStats.RemainingInterfaces
-	stats.interfaceCandidates += nodeStats.InterfaceCandidates
-	stats.emptyInterfaceSlots += nodeStats.EmptyInterfaceSlots
-	stats.nodes++
+		stats.nodeCapacity = nodeStats.Capacity
 
-	stats.nodeCapacity = nodeStats.Capacity
+		// Set per Node metrics.
+		n.metricsAPI.SetIPAvailable(node.name, stats.nodeCapacity)
+		n.metricsAPI.SetIPUsed(node.name, nodeStats.UsedIPs)
+		n.metricsAPI.SetIPNeeded(node.name, nodeStats.NeededIPs)
 
-	// Set per Node metrics.
-	n.metricsAPI.SetIPAvailable(node.name, stats.nodeCapacity)
-	n.metricsAPI.SetIPUsed(node.name, nodeStats.UsedIPs)
-	n.metricsAPI.SetIPNeeded(node.name, nodeStats.NeededIPs)
+		if allocationNeeded {
+			stats.nodesInDeficit++
+		}
 
-	if allocationNeeded {
-		stats.nodesInDeficit++
+		if nodeStats.RemainingInterfaces == 0 && availableOnNode == 0 {
+			stats.nodesAtCapacity++
+		}
+
+		stats.mutex.Unlock()
 	}
-
-	if nodeStats.RemainingInterfaces == 0 && availableOnNode == 0 {
-		stats.nodesAtCapacity++
-	}
-
-	stats.mutex.Unlock()
 
 	node.k8sSync.Trigger()
 }
