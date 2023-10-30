@@ -45,6 +45,7 @@ const (
 	Active poolStatus = iota
 	Recycling
 	Delete
+	WaitingForAllocate
 )
 
 const (
@@ -149,7 +150,7 @@ type crdPool struct {
 // returns instanceMutated which tracks if state changed with the cloud provider and is used
 // to determine if IPAM pool maintainer trigger func needs to be invoked.
 func (p *crdPool) maintainCRDIPPool(ctx context.Context) (poolMutated bool, err error) {
-	if p.status == Active {
+	if p.status == Active || p.status == WaitingForAllocate {
 		a, err := p.determinePoolMaintenanceAction()
 		if err != nil {
 			p.abortNoLongerExcessIPs(nil)
@@ -364,7 +365,7 @@ func (p *crdPool) recalculate(allocate ipamTypes.AllocationMap, stats ipamStats.
 	}
 
 	p.stats.AvailableIPs = len(p.available)
-	if p.status == Active {
+	if p.status == Active || p.status == WaitingForAllocate {
 		p.stats.NeededIPs = calculateNeededIPs(p.stats.AvailableIPs, p.stats.UsedIPs, p.getPreAllocate(), p.getMinAllocate(), maxAllocate)
 	} else {
 		p.stats.NeededIPs = 0
