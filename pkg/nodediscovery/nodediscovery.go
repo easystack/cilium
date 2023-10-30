@@ -736,6 +736,9 @@ func (n *NodeDiscovery) mutateNodeResource(nodeResource *ciliumv2.CiliumNode) er
 			if c.IPAM.PreAllocate != 0 {
 				nodeResource.Spec.IPAM.PreAllocate = c.IPAM.PreAllocate
 			}
+			if c.IPAM.MinAllocate != 0 {
+				nodeResource.Spec.IPAM.MinAllocate = c.IPAM.MinAllocate
+			}
 		}
 	}
 
