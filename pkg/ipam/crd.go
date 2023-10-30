@@ -590,7 +590,7 @@ func (n *nodeStore) addAllocator(allocator *crdAllocator) {
 }
 
 // allocate checks if a particular IP can be allocated or return an error
-func (n *nodeStore) allocate(ip net.IP, pool Pool) (*ipamTypes.AllocationIP, error) {
+func (n *nodeStore) allocate(ip net.IP, pool Pool, owner string) (*ipamTypes.AllocationIP, error) {
 	n.mutex.RLock()
 	defer n.mutex.RUnlock()
 
@@ -612,6 +612,15 @@ func (n *nodeStore) allocate(ip net.IP, pool Pool) (*ipamTypes.AllocationIP, err
 	}
 
 	ipInfo.Pool = pool.String()
+
+	csip, err := n.csipMgr.GetStaticIPForPod(owner)
+	if err != nil {
+		return nil, fmt.Errorf("get csip crd failed, error is %s", err)
+	}
+
+	if csip != nil && csip.Spec.ENIId != ipInfo.Resource {
+		return nil, fmt.Errorf("IP not available, expected value is %s, but get is %s", csip.Spec.ENIId, ipInfo.Resource)
+	}
 
 	return &ipInfo, nil
 }
@@ -892,7 +901,7 @@ func (a *crdAllocator) Allocate(ip net.IP, owner string, pool Pool) (*Allocation
 		}
 	}
 
-	ipInfo, err := a.store.allocate(ip, pool)
+	ipInfo, err := a.store.allocate(ip, pool, owner)
 	if err != nil {
 		return nil, err
 	}
@@ -901,6 +910,8 @@ func (a *crdAllocator) Allocate(ip net.IP, owner string, pool Pool) (*Allocation
 	if err != nil {
 		return nil, fmt.Errorf("failed to associate IP %s inside CiliumNode: %w", ip, err)
 	}
+
+	result.Resource = ipInfo.Resource
 
 	a.markAllocated(ip, owner, *ipInfo)
 	// Update custom resource to reflect the newly allocated IP.
@@ -925,7 +936,7 @@ func (a *crdAllocator) AllocateWithoutSyncUpstream(ip net.IP, owner string, pool
 		}
 	}
 
-	ipInfo, err := a.store.allocate(ip, pool)
+	ipInfo, err := a.store.allocate(ip, pool, owner)
 	if err != nil {
 		return nil, err
 	}

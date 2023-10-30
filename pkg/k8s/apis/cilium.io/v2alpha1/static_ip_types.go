@@ -56,6 +56,9 @@ type StaticIPSpec struct {
 
 	// +kubebuilder:validation:Optional
 	RecycleTime int `json:"recycle-time"`
+
+	// +kubebuilder:validation:Optional
+	ENIId string `json:"eni-id"`
 }
 
 type StaticIPStatus struct {
