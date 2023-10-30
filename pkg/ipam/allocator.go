@@ -241,6 +241,7 @@ func (ipam *IPAM) allocateNextFamily(family Family, owner string, pool Pool, nee
 						ipCopy.Status.UpdateTime = v1.Time{
 							Time: now,
 						}
+						ipCopy.Spec.ENIId = result.Resource
 						err = ipam.staticIPManager.UpdateStaticIPStatus(ipCopy)
 						if err != nil {
 							return
@@ -255,6 +256,7 @@ func (ipam *IPAM) allocateNextFamily(family Family, owner string, pool Pool, nee
 							ipCopy.Status.UpdateTime = v1.Time{
 								Time: now,
 							}
+							ipCopy.Spec.ENIId = result.Resource
 							err = ipam.staticIPManager.UpdateStaticIPStatus(ipCopy)
 							if err != nil {
 								goto reAllocate

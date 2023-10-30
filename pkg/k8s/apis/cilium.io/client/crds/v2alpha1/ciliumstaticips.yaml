@@ -56,6 +56,8 @@ spec:
             type: object
           spec:
             properties:
+              eni-id:
+                type: string
               ip:
                 type: string
               node-name:

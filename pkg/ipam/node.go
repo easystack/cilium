@@ -1220,7 +1220,7 @@ func (n *Node) update(origNode, node *v2.CiliumNode, attempts int, status bool) 
 	return err
 }
 
-func (n *Node) AllocateStaticIP(ip string, pool Pool) (error, *Statistics) {
+func (n *Node) AllocateStaticIP(ip string, pool Pool) (string, error, *Statistics) {
 
 	scopedLog := n.logger()
 	retryCount := 1
@@ -1232,7 +1232,7 @@ func (n *Node) AllocateStaticIP(ip string, pool Pool) (error, *Statistics) {
 retry:
 	allocation, err := n.ops.PrepareIPAllocation(scopedLog, pool)
 	if err != nil {
-		return err, nil
+		return "", err, nil
 	}
 
 	allocation.MaxIPsToAllocate = 1
@@ -1257,7 +1257,7 @@ retry:
 
 	if allocation == nil {
 		scopedLog.Debug("No allocation action required")
-		return errors.New("allocate static ip failed, no allocation action required"), nil
+		return "", errors.New("allocate static ip failed, no allocation action required"), nil
 	}
 
 	// Assign needed addresses
@@ -1272,11 +1272,11 @@ retry:
 			p.requireSyncCsip()
 			n.manager.metricsAPI.AllocationAttempt(allocateIP, success, string(allocation.PoolID), metrics.SinceInSeconds(start))
 			n.manager.metricsAPI.AddIPAllocation(string(allocation.PoolID), int64(allocation.AvailableForAllocation))
-			return nil, stats
+			return allocation.InterfaceID, nil, stats
 		}
 
 		if strings.HasPrefix(err.Error(), AllocateStaticIPErr) {
-			return err, stats
+			return "", err, stats
 		}
 
 		n.manager.metricsAPI.AllocationAttempt(allocateIP, failed, string(allocation.PoolID), metrics.SinceInSeconds(start))
@@ -1290,7 +1290,7 @@ retry:
 		created, err = n.createInterface(context.TODO(), allocation, pool)
 		if err != nil {
 			log.Errorf("createInterface failed :%v", err)
-			return fmt.Errorf("creted interface failed: %v", err), nil
+			return "", fmt.Errorf("creted interface failed: %v", err), nil
 		}
 	}
 
@@ -1301,7 +1301,7 @@ retry:
 		}
 	}
 
-	return fmt.Errorf("No slot is available. "), nil
+	return "", fmt.Errorf("No slot is available. "), nil
 }
 
 // CrdPools returns the IP allocation pool available to the node

@@ -637,6 +637,9 @@ func (in *StaticIPSpec) DeepEqual(other *StaticIPSpec) bool {
 	if in.RecycleTime != other.RecycleTime {
 		return false
 	}
+	if in.ENIId != other.ENIId {
+		return false
+	}
 
 	return true
 }

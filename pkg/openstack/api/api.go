@@ -776,7 +776,6 @@ func (c *Client) UnassignPrivateIPAddressesRetainPort(ctx context.Context, vpcID
 
 	if idx == -1 {
 		log.Errorf("no address found attached in eni %v", secondaryIpPort.ID)
-		return fmt.Errorf("no address found attached in eni %v", secondaryIpPort.ID)
 	} else {
 		err = c.deletePortAllowedAddressPairs(port.ID, []ports.AddressPair{
 			{

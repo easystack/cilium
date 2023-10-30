@@ -273,15 +273,15 @@ func (m extraManager) updateStaticIP(ipCrd *v2alpha1.CiliumStaticIP) {
 		log.Infof("ready to assign ip: %v for pod: %v, on node: %v .", ip, podFullName, node)
 		if n, ok := k8sManager.nodeManager.nodes[node]; ok {
 			if p, ok := n.pools[Pool(pool)]; ok {
-				err := p.allocateStaticIP(ip, Pool(pool))
+				eniID, err := p.allocateStaticIP(ip, Pool(pool))
 				if err != nil {
 					errMsg := fmt.Sprintf("allocate static ip: %v for pod %v failed: %s.", ip, podFullName, err)
-					k8sManager.UpdateCiliumStaticIP(ipCrd, v2alpha1.WaitingForAssign, errMsg)
+					k8sManager.UpdateCiliumStaticIP(ipCrd, v2alpha1.WaitingForAssign, errMsg, "")
 					return
 				}
 				// allocate static ip success, so operator need to update the ciliumnode resource.
 				k8sManager.requireSync(n)
-				k8sManager.UpdateCiliumStaticIP(ipCrd, v2alpha1.Assigned, "")
+				k8sManager.UpdateCiliumStaticIP(ipCrd, v2alpha1.Assigned, "", eniID)
 			} else {
 				log.Errorf("can't not found pool %s on node %s, assign ip:%s for pod %s  cancel.", pool, node, ip, podFullName)
 				return
@@ -308,16 +308,16 @@ func (m extraManager) updateStaticIP(ipCrd *v2alpha1.CiliumStaticIP) {
 		ipPool, err := k8sManager.GetCiliumPodIPPool(pool)
 		if err != nil {
 			log.Errorf("get ciliumPodIPPool failed, error is %s.", err)
-			k8sManager.UpdateCiliumStaticIP(ipCrd, v2alpha1.Idle, err.Error())
+			k8sManager.UpdateCiliumStaticIP(ipCrd, v2alpha1.Idle, err.Error(), "")
 		} else {
 			if n, ok := k8sManager.nodeManager.nodes[node]; ok {
 				err = n.Ops().UnbindStaticIP(context.TODO(), ipCrd.Spec.IP, ipPool.Spec.VPCId)
 				if err != nil {
 					log.Errorf("unbind static ip %s failed, error is %s", ip, err)
-					k8sManager.UpdateCiliumStaticIP(ipCrd, v2alpha1.Idle, err.Error())
+					k8sManager.UpdateCiliumStaticIP(ipCrd, v2alpha1.Idle, err.Error(), "")
 					return
 				} else {
-					k8sManager.UpdateCiliumStaticIP(ipCrd, v2alpha1.Unbind, "")
+					k8sManager.UpdateCiliumStaticIP(ipCrd, v2alpha1.Unbind, "", "")
 				}
 			}
 		}
@@ -340,7 +340,7 @@ func (m extraManager) updateStaticIP(ipCrd *v2alpha1.CiliumStaticIP) {
 					err := n.Ops().ReleaseStaticIP(ip, pool)
 					if err != nil {
 						errMsg := fmt.Sprintf("delete static ip: %v for pod %v failed: %s.", ip, podFullName, err)
-						k8sManager.UpdateCiliumStaticIP(ipCrd, v2alpha1.WaitingForRelease, errMsg)
+						k8sManager.UpdateCiliumStaticIP(ipCrd, v2alpha1.WaitingForRelease, errMsg, "")
 						return
 					}
 					log.Infof("delete static ip %s for pod %s on node %s success.", ip, podFullName, node)
@@ -719,12 +719,21 @@ func (extraManager) UpdateCiliumIPPoolStatus(pool string, node string, status, p
 	return nil
 }
 
-func (extraManager) UpdateCiliumStaticIP(csip *v2alpha1.CiliumStaticIP, status, phase string) {
+func (extraManager) UpdateCiliumStaticIP(csip *v2alpha1.CiliumStaticIP, status, phase string, eniId string) {
 	now := time.Now()
 	podFullName := csip.Namespace + "/" + csip.Name
 
 	csip = csip.DeepCopy()
+	if status == v2alpha1.Assigned {
+		csip.Spec.ENIId = eniId
+	}
+
+	if status == v2alpha1.Unbind || status == v2alpha1.WaitingForRelease {
+		csip.Spec.ENIId = ""
+	}
+	csip.Spec.ENIId = eniId
 	csip.Status.IPStatus = status
+	csip.Status.Phase = phase
 	csip.Status.UpdateTime = slim_metav1.Time(v1.Time{
 		Time: now,
 	})

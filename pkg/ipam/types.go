@@ -47,6 +47,11 @@ type AllocationResult struct {
 	// InterfaceNumber is a field for generically identifying an interface.
 	// This is only useful in ENI mode.
 	InterfaceNumber string
+
+	// Resource is set for both available and allocated IPs, it represents
+	// what resource the IP is associated with, e.g. in combination with
+	// AWS ENI, this will refer to the ID of the ENI
+	Resource string
 }
 
 // Allocator is the interface for an IP allocator implementation
