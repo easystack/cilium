@@ -509,45 +509,6 @@ func (extraManager) updateCiliumNodeManagerPool() {
 	}
 }
 
-func transformToNode(obj interface{}) (interface{}, error) {
-	switch concreteObj := obj.(type) {
-	case *slim_corev1.Node:
-		n := &slim_corev1.Node{
-			TypeMeta: concreteObj.TypeMeta,
-			ObjectMeta: slim_metav1.ObjectMeta{
-				Name:            concreteObj.Name,
-				ResourceVersion: concreteObj.ResourceVersion,
-				Annotations:     concreteObj.Annotations,
-				Labels:          concreteObj.Labels,
-			},
-		}
-		*concreteObj = slim_corev1.Node{}
-		return n, nil
-	case cache.DeletedFinalStateUnknown:
-		node, ok := concreteObj.Obj.(*slim_corev1.Node)
-		if !ok {
-			return nil, fmt.Errorf("unknown object type %T", concreteObj.Obj)
-		}
-		dfsu := cache.DeletedFinalStateUnknown{
-			Key: concreteObj.Key,
-			Obj: &slim_corev1.Node{
-				TypeMeta: node.TypeMeta,
-				ObjectMeta: slim_metav1.ObjectMeta{
-					Name:            node.Name,
-					ResourceVersion: node.ResourceVersion,
-					Annotations:     node.Annotations,
-					Labels:          node.Labels,
-				},
-			},
-		}
-		// Small GC optimization
-		*node = slim_corev1.Node{}
-		return dfsu, nil
-	default:
-		return nil, fmt.Errorf("unknown object type %T", concreteObj)
-	}
-}
-
 func addPool(obj interface{}) {
 	key, _ := queueKeyFunc(obj)
 	p, exists, err := crdPoolStore.GetByKey(key)
