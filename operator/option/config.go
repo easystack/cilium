@@ -247,6 +247,9 @@ const (
 	// OpenStackProjectID allows user to specific project
 	OpenStackProjectID = "openstack-project-id"
 
+	// OpenStackHttpTimeout defines openstack client http timeout
+	OpenStackHttpTimeout = "openstack-http-timeout"
+
 	// OpenStackReleaseExcessIPs allows releasing excess free IP addresses from ENI.
 	// Enabling this option reduces waste of IP addresses but may increase
 	// the number of API calls to OpenStack ECS service.
@@ -535,6 +538,9 @@ type OperatorConfig struct {
 	// OpenStack allow user to specific project
 	OpenStackProjectID string
 
+	// OpenStack api http timeout
+	OpenStackHttpTimeout int
+
 	// OpenStackReleaseExcessIPs allows releasing excess free IP addresses from ENI.
 	// Enabling this option reduces waste of IP addresses but may increase
 	// the number of API calls to openstack service.
@@ -730,6 +736,8 @@ func (c *OperatorConfig) Populate(vp *viper.Viper) {
 	c.OpenStackProjectID = vp.GetString(OpenStackProjectID)
 	c.OpenStackReleaseExcessIPs = vp.GetBool(OpenStackReleaseExcessIPs)
 	c.OpenStackDefaultSubnetID = vp.GetString(OpenStackDefaultSubnetID)
+	c.OpenStackHttpTimeout = vp.GetInt(OpenStackHttpTimeout)
+
 	// CiliumEndpointSlice options
 	c.CESMaxCEPsInCES = vp.GetInt(CESMaxCEPsInCES)
 	c.CESSlicingMode = vp.GetString(CESSlicingMode)
