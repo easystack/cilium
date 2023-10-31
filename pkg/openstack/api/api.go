@@ -103,12 +103,17 @@ type MetricsAPI interface {
 }
 
 // NewClient create the client
-func NewClient(metrics MetricsAPI, rateLimit float64, burst int, filters map[string]string) (*Client, error) {
-	provider, err := newProviderClientOrDie(false)
+func NewClient(metrics MetricsAPI, rateLimit float64, burst int, filters map[string]string, clientTimeout int) (*Client, error) {
+	timeout := 60
+	if clientTimeout != 0 {
+		timeout = clientTimeout
+	}
+	log.Infof("openstack http timeout is %d s.", timeout)
+	provider, err := newProviderClientOrDie(false, timeout)
 	if err != nil {
 		return nil, err
 	}
-	domainTokenProvider, err := newProviderClientOrDie(true)
+	domainTokenProvider, err := newProviderClientOrDie(true, timeout)
 	if err != nil {
 		return nil, err
 	}
@@ -139,7 +144,7 @@ func NewClient(metrics MetricsAPI, rateLimit float64, burst int, filters map[str
 	}, nil
 }
 
-func newProviderClientOrDie(domainScope bool) (*gophercloud.ProviderClient, error) {
+func newProviderClientOrDie(domainScope bool, timeout int) (*gophercloud.ProviderClient, error) {
 	opt, err := openstack.AuthOptionsFromEnv()
 	if err != nil {
 		return nil, err
@@ -158,7 +163,7 @@ func newProviderClientOrDie(domainScope bool) (*gophercloud.ProviderClient, erro
 	}
 	p.HTTPClient = http.Client{
 		Transport: http.DefaultTransport,
-		Timeout:   time.Second * 60,
+		Timeout:   time.Second * time.Duration(timeout),
 	}
 	p.ReauthFunc = func() error {
 		newprov, err := openstack.AuthenticatedClient(opt)

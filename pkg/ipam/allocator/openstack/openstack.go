@@ -39,9 +39,10 @@ func (a *AllocatorOpenStack) Init(ctx context.Context) error {
 	var err error
 
 	projectID := operatorOption.Config.OpenStackProjectID
+	timeout := operatorOption.Config.OpenStackHttpTimeout
 
 	a.client, err = api.NewClient(aMetrics, operatorOption.Config.IPAMAPIQPSLimit, operatorOption.Config.IPAMAPIBurst,
-		map[string]string{api.ProjectID: projectID})
+		map[string]string{api.ProjectID: projectID}, timeout)
 
 	if err != nil {
 		log.Errorf("Failed to init openstack client with error: %s", err)
