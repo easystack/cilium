@@ -42,15 +42,6 @@ spec:
             type: object
           spec:
             description: Spec is the desired Cilium specific rule specification.
-            oneOf:
-            - properties:
-                endpointSelector: {}
-              required:
-              - endpointSelector
-            - properties:
-                nodeSelector: {}
-              required:
-              - nodeSelector
             properties:
               description:
                 description: Description is a free form string, it can be used by
@@ -156,15 +147,6 @@ spec:
                           to/from which outside communication  is allowed, along with
                           an optional list of subnets within that CIDR prefix to/from
                           which outside communication is not allowed.
-                        oneOf:
-                        - properties:
-                            cidr: {}
-                          required:
-                          - cidr
-                        - properties:
-                            cidrGroupRef: {}
-                          required:
-                          - cidrGroupRef
                         properties:
                           cidr:
                             description: CIDR is a CIDR prefix / IP Block.
@@ -242,10 +224,6 @@ spec:
                             type: array
                           matchLabels:
                             additionalProperties:
-                              description: MatchLabelsValue represents the value from
-                                the MatchLabels {key,value} pair.
-                              maxLength: 63
-                              pattern: ^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$
                               type: string
                             description: matchLabels is a map of {key,value} pairs.
                               A single {key,value} in the matchLabels map is equivalent
@@ -851,10 +829,6 @@ spec:
                             type: array
                           matchLabels:
                             additionalProperties:
-                              description: MatchLabelsValue represents the value from
-                                the MatchLabels {key,value} pair.
-                              maxLength: 63
-                              pattern: ^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$
                               type: string
                             description: matchLabels is a map of {key,value} pairs.
                               A single {key,value} in the matchLabels map is equivalent
@@ -933,10 +907,6 @@ spec:
                                     type: array
                                   matchLabels:
                                     additionalProperties:
-                                      description: MatchLabelsValue represents the
-                                        value from the MatchLabels {key,value} pair.
-                                      maxLength: 63
-                                      pattern: ^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$
                                       type: string
                                     description: matchLabels is a map of {key,value}
                                       pairs. A single {key,value} in the matchLabels
@@ -1039,15 +1009,6 @@ spec:
                           to/from which outside communication  is allowed, along with
                           an optional list of subnets within that CIDR prefix to/from
                           which outside communication is not allowed.
-                        oneOf:
-                        - properties:
-                            cidr: {}
-                          required:
-                          - cidr
-                        - properties:
-                            cidrGroupRef: {}
-                          required:
-                          - cidrGroupRef
                         properties:
                           cidr:
                             description: CIDR is a CIDR prefix / IP Block.
@@ -1125,10 +1086,6 @@ spec:
                             type: array
                           matchLabels:
                             additionalProperties:
-                              description: MatchLabelsValue represents the value from
-                                the MatchLabels {key,value} pair.
-                              maxLength: 63
-                              pattern: ^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$
                               type: string
                             description: matchLabels is a map of {key,value} pairs.
                               A single {key,value} in the matchLabels map is equivalent
@@ -1288,10 +1245,6 @@ spec:
                             type: array
                           matchLabels:
                             additionalProperties:
-                              description: MatchLabelsValue represents the value from
-                                the MatchLabels {key,value} pair.
-                              maxLength: 63
-                              pattern: ^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$
                               type: string
                             description: matchLabels is a map of {key,value} pairs.
                               A single {key,value} in the matchLabels map is equivalent
@@ -1370,10 +1323,6 @@ spec:
                                     type: array
                                   matchLabels:
                                     additionalProperties:
-                                      description: MatchLabelsValue represents the
-                                        value from the MatchLabels {key,value} pair.
-                                      maxLength: 63
-                                      pattern: ^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$
                                       type: string
                                     description: matchLabels is a map of {key,value}
                                       pairs. A single {key,value} in the matchLabels
@@ -1433,10 +1382,6 @@ spec:
                     type: array
                   matchLabels:
                     additionalProperties:
-                      description: MatchLabelsValue represents the value from the
-                        MatchLabels {key,value} pair.
-                      maxLength: 63
-                      pattern: ^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$
                       type: string
                     description: matchLabels is a map of {key,value} pairs. A single
                       {key,value} in the matchLabels map is equivalent to an element
@@ -1512,15 +1457,6 @@ spec:
                           to/from which outside communication  is allowed, along with
                           an optional list of subnets within that CIDR prefix to/from
                           which outside communication is not allowed.
-                        oneOf:
-                        - properties:
-                            cidr: {}
-                          required:
-                          - cidr
-                        - properties:
-                            cidrGroupRef: {}
-                          required:
-                          - cidrGroupRef
                         properties:
                           cidr:
                             description: CIDR is a CIDR prefix / IP Block.
@@ -1598,10 +1534,6 @@ spec:
                             type: array
                           matchLabels:
                             additionalProperties:
-                              description: MatchLabelsValue represents the value from
-                                the MatchLabels {key,value} pair.
-                              maxLength: 63
-                              pattern: ^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$
                               type: string
                             description: matchLabels is a map of {key,value} pairs.
                               A single {key,value} in the matchLabels map is equivalent
@@ -1683,10 +1615,6 @@ spec:
                             type: array
                           matchLabels:
                             additionalProperties:
-                              description: MatchLabelsValue represents the value from
-                                the MatchLabels {key,value} pair.
-                              maxLength: 63
-                              pattern: ^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$
                               type: string
                             description: matchLabels is a map of {key,value} pairs.
                               A single {key,value} in the matchLabels map is equivalent
@@ -2227,15 +2155,6 @@ spec:
                           to/from which outside communication  is allowed, along with
                           an optional list of subnets within that CIDR prefix to/from
                           which outside communication is not allowed.
-                        oneOf:
-                        - properties:
-                            cidr: {}
-                          required:
-                          - cidr
-                        - properties:
-                            cidrGroupRef: {}
-                          required:
-                          - cidrGroupRef
                         properties:
                           cidr:
                             description: CIDR is a CIDR prefix / IP Block.
@@ -2313,10 +2232,6 @@ spec:
                             type: array
                           matchLabels:
                             additionalProperties:
-                              description: MatchLabelsValue represents the value from
-                                the MatchLabels {key,value} pair.
-                              maxLength: 63
-                              pattern: ^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$
                               type: string
                             description: matchLabels is a map of {key,value} pairs.
                               A single {key,value} in the matchLabels map is equivalent
@@ -2398,10 +2313,6 @@ spec:
                             type: array
                           matchLabels:
                             additionalProperties:
-                              description: MatchLabelsValue represents the value from
-                                the MatchLabels {key,value} pair.
-                              maxLength: 63
-                              pattern: ^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$
                               type: string
                             description: matchLabels is a map of {key,value} pairs.
                               A single {key,value} in the matchLabels map is equivalent
@@ -2557,10 +2468,6 @@ spec:
                     type: array
                   matchLabels:
                     additionalProperties:
-                      description: MatchLabelsValue represents the value from the
-                        MatchLabels {key,value} pair.
-                      maxLength: 63
-                      pattern: ^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$
                       type: string
                     description: matchLabels is a map of {key,value} pairs. A single
                       {key,value} in the matchLabels map is equivalent to an element
@@ -2582,15 +2489,6 @@ spec:
                 the connection or one side has to be omitted. \n Either ingress, egress,
                 or both can be provided. If both ingress and egress are omitted, the
                 rule has no effect."
-              oneOf:
-              - properties:
-                  endpointSelector: {}
-                required:
-                - endpointSelector
-              - properties:
-                  nodeSelector: {}
-                required:
-                - nodeSelector
               properties:
                 description:
                   description: Description is a free form string, it can be used by
@@ -2697,15 +2595,6 @@ spec:
                             to/from which outside communication  is allowed, along
                             with an optional list of subnets within that CIDR prefix
                             to/from which outside communication is not allowed.
-                          oneOf:
-                          - properties:
-                              cidr: {}
-                            required:
-                            - cidr
-                          - properties:
-                              cidrGroupRef: {}
-                            required:
-                            - cidrGroupRef
                           properties:
                             cidr:
                               description: CIDR is a CIDR prefix / IP Block.
@@ -2784,10 +2673,6 @@ spec:
                               type: array
                             matchLabels:
                               additionalProperties:
-                                description: MatchLabelsValue represents the value
-                                  from the MatchLabels {key,value} pair.
-                                maxLength: 63
-                                pattern: ^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$
                                 type: string
                               description: matchLabels is a map of {key,value} pairs.
                                 A single {key,value} in the matchLabels map is equivalent
@@ -3406,10 +3291,6 @@ spec:
                               type: array
                             matchLabels:
                               additionalProperties:
-                                description: MatchLabelsValue represents the value
-                                  from the MatchLabels {key,value} pair.
-                                maxLength: 63
-                                pattern: ^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$
                                 type: string
                               description: matchLabels is a map of {key,value} pairs.
                                 A single {key,value} in the matchLabels map is equivalent
@@ -3491,10 +3372,6 @@ spec:
                                       type: array
                                     matchLabels:
                                       additionalProperties:
-                                        description: MatchLabelsValue represents the
-                                          value from the MatchLabels {key,value} pair.
-                                        maxLength: 63
-                                        pattern: ^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$
                                         type: string
                                       description: matchLabels is a map of {key,value}
                                         pairs. A single {key,value} in the matchLabels
@@ -3598,15 +3475,6 @@ spec:
                             to/from which outside communication  is allowed, along
                             with an optional list of subnets within that CIDR prefix
                             to/from which outside communication is not allowed.
-                          oneOf:
-                          - properties:
-                              cidr: {}
-                            required:
-                            - cidr
-                          - properties:
-                              cidrGroupRef: {}
-                            required:
-                            - cidrGroupRef
                           properties:
                             cidr:
                               description: CIDR is a CIDR prefix / IP Block.
@@ -3685,10 +3553,6 @@ spec:
                               type: array
                             matchLabels:
                               additionalProperties:
-                                description: MatchLabelsValue represents the value
-                                  from the MatchLabels {key,value} pair.
-                                maxLength: 63
-                                pattern: ^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$
                                 type: string
                               description: matchLabels is a map of {key,value} pairs.
                                 A single {key,value} in the matchLabels map is equivalent
@@ -3850,10 +3714,6 @@ spec:
                               type: array
                             matchLabels:
                               additionalProperties:
-                                description: MatchLabelsValue represents the value
-                                  from the MatchLabels {key,value} pair.
-                                maxLength: 63
-                                pattern: ^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$
                                 type: string
                               description: matchLabels is a map of {key,value} pairs.
                                 A single {key,value} in the matchLabels map is equivalent
@@ -3935,10 +3795,6 @@ spec:
                                       type: array
                                     matchLabels:
                                       additionalProperties:
-                                        description: MatchLabelsValue represents the
-                                          value from the MatchLabels {key,value} pair.
-                                        maxLength: 63
-                                        pattern: ^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$
                                         type: string
                                       description: matchLabels is a map of {key,value}
                                         pairs. A single {key,value} in the matchLabels
@@ -3998,10 +3854,6 @@ spec:
                       type: array
                     matchLabels:
                       additionalProperties:
-                        description: MatchLabelsValue represents the value from the
-                          MatchLabels {key,value} pair.
-                        maxLength: 63
-                        pattern: ^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$
                         type: string
                       description: matchLabels is a map of {key,value} pairs. A single
                         {key,value} in the matchLabels map is equivalent to an element
@@ -4077,15 +3929,6 @@ spec:
                             to/from which outside communication  is allowed, along
                             with an optional list of subnets within that CIDR prefix
                             to/from which outside communication is not allowed.
-                          oneOf:
-                          - properties:
-                              cidr: {}
-                            required:
-                            - cidr
-                          - properties:
-                              cidrGroupRef: {}
-                            required:
-                            - cidrGroupRef
                           properties:
                             cidr:
                               description: CIDR is a CIDR prefix / IP Block.
@@ -4164,10 +4007,6 @@ spec:
                               type: array
                             matchLabels:
                               additionalProperties:
-                                description: MatchLabelsValue represents the value
-                                  from the MatchLabels {key,value} pair.
-                                maxLength: 63
-                                pattern: ^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$
                                 type: string
                               description: matchLabels is a map of {key,value} pairs.
                                 A single {key,value} in the matchLabels map is equivalent
@@ -4249,10 +4088,6 @@ spec:
                               type: array
                             matchLabels:
                               additionalProperties:
-                                description: MatchLabelsValue represents the value
-                                  from the MatchLabels {key,value} pair.
-                                maxLength: 63
-                                pattern: ^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$
                                 type: string
                               description: matchLabels is a map of {key,value} pairs.
                                 A single {key,value} in the matchLabels map is equivalent
@@ -4803,15 +4638,6 @@ spec:
                             to/from which outside communication  is allowed, along
                             with an optional list of subnets within that CIDR prefix
                             to/from which outside communication is not allowed.
-                          oneOf:
-                          - properties:
-                              cidr: {}
-                            required:
-                            - cidr
-                          - properties:
-                              cidrGroupRef: {}
-                            required:
-                            - cidrGroupRef
                           properties:
                             cidr:
                               description: CIDR is a CIDR prefix / IP Block.
@@ -4890,10 +4716,6 @@ spec:
                               type: array
                             matchLabels:
                               additionalProperties:
-                                description: MatchLabelsValue represents the value
-                                  from the MatchLabels {key,value} pair.
-                                maxLength: 63
-                                pattern: ^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$
                                 type: string
                               description: matchLabels is a map of {key,value} pairs.
                                 A single {key,value} in the matchLabels map is equivalent
@@ -4975,10 +4797,6 @@ spec:
                               type: array
                             matchLabels:
                               additionalProperties:
-                                description: MatchLabelsValue represents the value
-                                  from the MatchLabels {key,value} pair.
-                                maxLength: 63
-                                pattern: ^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$
                                 type: string
                               description: matchLabels is a map of {key,value} pairs.
                                 A single {key,value} in the matchLabels map is equivalent
@@ -5137,10 +4955,6 @@ spec:
                       type: array
                     matchLabels:
                       additionalProperties:
-                        description: MatchLabelsValue represents the value from the
-                          MatchLabels {key,value} pair.
-                        maxLength: 63
-                        pattern: ^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$
                         type: string
                       description: matchLabels is a map of {key,value} pairs. A single
                         {key,value} in the matchLabels map is equivalent to an element

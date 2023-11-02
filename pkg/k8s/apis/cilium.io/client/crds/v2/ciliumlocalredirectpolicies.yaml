@@ -96,10 +96,6 @@ spec:
                         type: array
                       matchLabels:
                         additionalProperties:
-                          description: MatchLabelsValue represents the value from
-                            the MatchLabels {key,value} pair.
-                          maxLength: 63
-                          pattern: ^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$
                           type: string
                         description: matchLabels is a map of {key,value} pairs. A
                           single {key,value} in the matchLabels map is equivalent
@@ -147,15 +143,6 @@ spec:
               redirectFrontend:
                 description: RedirectFrontend specifies frontend configuration to
                   redirect traffic from. It can not be empty.
-                oneOf:
-                - properties:
-                    addressMatcher: {}
-                  required:
-                  - addressMatcher
-                - properties:
-                    serviceMatcher: {}
-                  required:
-                  - serviceMatcher
                 properties:
                   addressMatcher:
                     description: AddressMatcher is a tuple {IP, port, protocol} that
