@@ -55,12 +55,15 @@ type IPPoolSpec struct {
 // IPPoolStatus describe the status of the nodes which uses the pool
 type IPPoolStatus struct {
 	// Items is a list of CiliumPodIPPools.
+	// +kubebuilder:validation:Optional
 	Items map[string]ItemSpec `json:"items"`
 }
 
 // ItemSpec describe the status of the node which uses the pool
 type ItemSpec struct {
-	Phase  string `json:"phase"`
+	// +kubebuilder:validation:Optional
+	Phase string `json:"phase"`
+	// +kubebuilder:validation:Optional
 	Status string `json:"status"`
 }
 
