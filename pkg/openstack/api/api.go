@@ -233,7 +233,6 @@ func (c *Client) GetInstance(ctx context.Context, vpcs ipamTypes.VirtualNetworkM
 		if !strings.HasPrefix(iface.DeviceOwner, VMDeviceOwner) {
 			continue
 		}
-		log.Errorf("######## networkInterface is %+v", iface)
 		_, eni, err := parseENI(&iface, subnets)
 		if err != nil {
 			log.Errorf("######## Failed to pares eni %+v, with error %s", iface, err)
@@ -246,7 +245,6 @@ func (c *Client) GetInstance(ctx context.Context, vpcs ipamTypes.VirtualNetworkM
 			}
 		}
 	}
-	log.Errorf("######## Update instances, instanceID is %s, iface is: %+v", instanceID, instance.Interfaces)
 
 	return
 }
@@ -254,7 +252,7 @@ func (c *Client) GetInstance(ctx context.Context, vpcs ipamTypes.VirtualNetworkM
 // GetVpcs retrieves and returns all Vpcs
 func (c *Client) GetVpcs(ctx context.Context) (ipamTypes.VirtualNetworkMap, error) {
 	vpcs := ipamTypes.VirtualNetworkMap{}
-	log.Errorf("######## Do Get vpcs")
+	log.Debug("######## Do Get vpcs")
 	vpcList, err := c.describeVpcs()
 	if err != nil {
 		return nil, err

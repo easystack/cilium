@@ -232,9 +232,7 @@ func (n *Node) ResyncInterfacesAndIPs(ctx context.Context, scopedLog *logrus.Ent
 	n.manager.ForeachInstance(instanceID,
 		func(instanceID, interfaceID string, rev ipamTypes.InterfaceRevision) error {
 			e, ok := rev.Resource.(*eniTypes.ENI)
-			scopedLog.Infof("!!!!!!!!!!!! instance ENI is %+v, ok is %t", e, ok)
 			if !ok {
-				scopedLog.Infof("!!!!!!!!!!!! not here !!!!!!!!!!!")
 				return nil
 			}
 
@@ -339,7 +337,7 @@ func (n *Node) PrepareIPAllocation(scopedLog *logrus.Entry, pool ipam.Pool) (*ip
 
 // AllocateIPs performs the ENI allocation operation
 func (n *Node) AllocateIPs(ctx context.Context, a *ipam.AllocationAction, pool ipam.Pool) error {
-	log.Infof("@@@@@@@@@@@@@@@@@@@ Do Allocate IPs.....")
+	log.Infof("@@@@@@@@@@@@@@@@@@@ Do Allocate IPs..... for node %s", n.node.InstanceID())
 	n.ifaceMutex.Lock()
 	defer n.ifaceMutex.Unlock()
 	_, err := n.manager.api.AssignPrivateIPAddresses(ctx, a.InterfaceID, a.AvailableForAllocation)
@@ -591,9 +589,7 @@ func (n *Node) ResyncInterfacesAndIPsByPool(ctx context.Context, scopedLog *logr
 	n.manager.ForeachInstance(instanceID,
 		func(instanceID, interfaceID string, rev ipamTypes.InterfaceRevision) error {
 			e, ok := rev.Resource.(*eniTypes.ENI)
-			scopedLog.Infof("!!!!!!!!!!!! instance ENI is %+v, ok is %t", e, ok)
 			if !ok {
-				scopedLog.Infof("!!!!!!!!!!!! not here !!!!!!!!!!!")
 				return nil
 			}
 
@@ -602,7 +598,6 @@ func (n *Node) ResyncInterfacesAndIPsByPool(ctx context.Context, scopedLog *logr
 			n.poolsEnis[ipam.Pool(e.Pool)] = append(n.poolsEnis[ipam.Pool(e.Pool)], e.ID)
 
 			if utils.IsExcludedByTags(e.Tags) {
-				scopedLog.Infof("!!!!!!!!!!!! ENI %s is excluded by tags in Resync functions", e.ID)
 				return nil
 			}
 			if _, ok := poolAvailable[ipam.Pool(e.Pool)]; !ok {
