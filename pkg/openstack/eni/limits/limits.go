@@ -11,6 +11,8 @@ import (
 // limits contains limits for adapter count and addresses. The mappings will be
 // updated from agent configuration at bootstrap time.
 //
+var FlavorName = "openstack"
+
 var limits = struct {
 	lock.RWMutex
 
@@ -32,12 +34,7 @@ func Update(limitMap map[string]ipamTypes.Limits) {
 // Get returns the instance limits of a particular instance type.
 func Get(instanceType string) (limit ipamTypes.Limits, ok bool) {
 	limits.RLock()
-	//limit, ok = limits.m[instanceType]
-	limit = ipamTypes.Limits{
-		Adapters: 6,
-		IPv4: 20,
-		IPv6: 20,
-	}
+	limit, ok = limits.m[FlavorName]
 	ok = true
 	limits.RUnlock()
 	return
