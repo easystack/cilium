@@ -250,6 +250,15 @@ const (
 	// OpenStackHttpTimeout defines openstack client http timeout
 	OpenStackHttpTimeout = "openstack-http-timeout"
 
+	// OpenStackMaxNics defines max nics per vm
+	OpenStackMaxNics = "openstack-max-nics"
+
+	// OpenStackMaxV4PodIPs defines max v4 pod ips on one vm nic
+	OpenStackMaxV4PodIPs = "openstack-max-ipv4-ips"
+
+	// OpenStackMaxV6PodIPs defines max v6 pod ips on one vm nic
+	OpenStackMaxV6PodIPs = "openstack-max-ipv6-ips"
+
 	// OpenStackReleaseExcessIPs allows releasing excess free IP addresses from ENI.
 	// Enabling this option reduces waste of IP addresses but may increase
 	// the number of API calls to OpenStack ECS service.
@@ -538,8 +547,17 @@ type OperatorConfig struct {
 	// OpenStack allow user to specific project
 	OpenStackProjectID string
 
-	// OpenStack api http timeout
-	OpenStackHttpTimeout int
+    // OpenStack api http timeout
+    OpenStackHttpTimeout int
+
+	// OpenStack max nics per vm
+	OpenStackMaxNics int
+
+	// OpenStack max ipv4 pod ips per nic
+	OpenStackMaxV4PodIPs int
+
+	// OpenStack max ipv6 pod ips per nic
+	OpenStackMaxV6PodIPs int
 
 	// OpenStackReleaseExcessIPs allows releasing excess free IP addresses from ENI.
 	// Enabling this option reduces waste of IP addresses but may increase
@@ -737,6 +755,9 @@ func (c *OperatorConfig) Populate(vp *viper.Viper) {
 	c.OpenStackReleaseExcessIPs = vp.GetBool(OpenStackReleaseExcessIPs)
 	c.OpenStackDefaultSubnetID = vp.GetString(OpenStackDefaultSubnetID)
 	c.OpenStackHttpTimeout = vp.GetInt(OpenStackHttpTimeout)
+	c.OpenStackMaxNics = vp.GetInt(OpenStackMaxNics)
+	c.OpenStackMaxV4PodIPs = vp.GetInt(OpenStackMaxV4PodIPs)
+	c.OpenStackMaxV6PodIPs = vp.GetInt(OpenStackMaxV6PodIPs)
 
 	// CiliumEndpointSlice options
 	c.CESMaxCEPsInCES = vp.GetInt(CESMaxCEPsInCES)

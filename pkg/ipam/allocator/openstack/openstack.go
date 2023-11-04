@@ -6,6 +6,7 @@ package openstack
 import (
 	"context"
 	"fmt"
+	ipamTypes "github.com/cilium/cilium/pkg/ipam/types"
 
 	operatorMetrics "github.com/cilium/cilium/operator/metrics"
 	operatorOption "github.com/cilium/cilium/operator/option"
@@ -17,6 +18,7 @@ import (
 	"github.com/cilium/cilium/pkg/logging/logfields"
 	"github.com/cilium/cilium/pkg/openstack/api"
 	"github.com/cilium/cilium/pkg/openstack/eni"
+	"github.com/cilium/cilium/pkg/openstack/eni/limits"
 )
 
 var log = logging.DefaultLogger.WithField(logfields.LogSubsys, "ipam-allocator-openstack")
@@ -40,6 +42,14 @@ func (a *AllocatorOpenStack) Init(ctx context.Context) error {
 
 	projectID := operatorOption.Config.OpenStackProjectID
 	timeout := operatorOption.Config.OpenStackHttpTimeout
+
+	limits.Update(map[string]ipamTypes.Limits{
+		limits.FlavorName: {
+			Adapters: operatorOption.Config.OpenStackMaxNics,
+			IPv4: operatorOption.Config.OpenStackMaxV4PodIPs,
+			IPv6: operatorOption.Config.OpenStackMaxV6PodIPs,
+		},
+	})
 
 	a.client, err = api.NewClient(aMetrics, operatorOption.Config.IPAMAPIQPSLimit, operatorOption.Config.IPAMAPIBurst,
 		map[string]string{api.ProjectID: projectID}, timeout)
