@@ -204,11 +204,11 @@ func newIdentityV3ClientOrDie(p *gophercloud.ProviderClient) (*gophercloud.Servi
 
 // GetInstances returns the list of all instances including their ENIs as
 // instanceMap
-func (c *Client) GetInstances(ctx context.Context, vpcs ipamTypes.VirtualNetworkMap, subnets ipamTypes.SubnetMap, instanceIDs []string) (*ipamTypes.InstanceMap, error) {
+func (c *Client) GetInstances(ctx context.Context, subnets ipamTypes.SubnetMap, instanceIDs []string) (*ipamTypes.InstanceMap, error) {
 	instances := ipamTypes.NewInstanceMap()
 	log.Debug("######## Do Get instances")
 	for _, instanceId := range instanceIDs {
-		instance, err := c.GetInstance(ctx, vpcs, subnets, instanceId)
+		instance, err := c.GetInstance(ctx, subnets, instanceId)
 		if err != nil {
 			return nil, err
 		}
@@ -218,7 +218,7 @@ func (c *Client) GetInstances(ctx context.Context, vpcs ipamTypes.VirtualNetwork
 	return instances, nil
 }
 
-func (c *Client) GetInstance(ctx context.Context, vpcs ipamTypes.VirtualNetworkMap, subnets ipamTypes.SubnetMap, instanceID string) (instance *ipamTypes.Instance, err error) {
+func (c *Client) GetInstance(ctx context.Context, subnets ipamTypes.SubnetMap, instanceID string) (instance *ipamTypes.Instance, err error) {
 	log.Debug("######## Do Get instance: %s ports", instanceID)
 	instance = &ipamTypes.Instance{}
 	instance.Interfaces = map[string]ipamTypes.InterfaceRevision{}
