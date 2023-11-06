@@ -318,10 +318,18 @@ func getPendingPodCount(nodeName string) (int, error) {
 	return pendingPods, nil
 }
 
-func calculateNeededIPs(availableIPs, usedIPs, preAllocate, minAllocate, maxAllocate int) (neededIPs int) {
+func calculateNeededIPs(availableIPs, usedIPs, preAllocate, minAllocate, maxAllocate int, maxAboveWatermark int) (neededIPs int) {
 	neededIPs = preAllocate - (availableIPs - usedIPs)
 	if minAllocate > 0 {
 		neededIPs = math.IntMax(neededIPs, minAllocate-availableIPs)
+	}
+
+	if maxAboveWatermark > 0 {
+		if usedIPs <= maxAboveWatermark-preAllocate {
+			neededIPs = maxAboveWatermark
+		} else {
+			neededIPs = usedIPs + preAllocate
+		}
 	}
 
 	// If maxAllocate is set (> 0) and neededIPs is higher than the
