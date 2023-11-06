@@ -7,7 +7,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/cilium/cilium/pkg/ipam/staticip"
 	"math/big"
 	"net"
 	"net/netip"
@@ -16,6 +15,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/cilium/cilium/pkg/ipam/ciliumpodippoolmonitor"
+	"github.com/cilium/cilium/pkg/ipam/staticip"
 
 	"github.com/sirupsen/logrus"
 	"github.com/vishvananda/netlink"
@@ -195,6 +197,8 @@ type Daemon struct {
 	ipamMetadata *ipamMetadata.Manager
 
 	staticIPManager *staticip.Manager
+
+	ciliumPodIPPoolMonitor *ciliumpodippoolmonitor.CiliumPodIPPoolMonitor
 
 	apiLimiterSet *rate.APILimiterSet
 
@@ -536,19 +540,20 @@ func newDaemon(ctx context.Context, cleaner *daemonCleanup, params *daemonParams
 		// **NOTE** The global identity allocator is not yet initialized here; that
 		// happens below via InitIdentityAllocator(). Only the local identity
 		// allocator is initialized here.
-		identityAllocator:    params.IdentityAllocator,
-		ipcache:              params.IPCache,
-		policy:               params.Policy,
-		policyUpdater:        params.PolicyUpdater,
-		egressGatewayManager: params.EgressGatewayManager,
-		ipamMetadata:         params.IPAMMetadataManager,
-		staticIPManager:      params.StaticIPManager,
-		cniConfigManager:     params.CNIConfigManager,
-		clustermesh:          params.ClusterMesh,
-		monitorAgent:         params.MonitorAgent,
-		l2announcer:          params.L2Announcer,
-		l7Proxy:              params.L7Proxy,
-		db:                   params.DB,
+		identityAllocator:      params.IdentityAllocator,
+		ipcache:                params.IPCache,
+		policy:                 params.Policy,
+		policyUpdater:          params.PolicyUpdater,
+		egressGatewayManager:   params.EgressGatewayManager,
+		ipamMetadata:           params.IPAMMetadataManager,
+		staticIPManager:        params.StaticIPManager,
+		ciliumPodIPPoolMonitor: params.CiliumPodIPPoolMonitor,
+		cniConfigManager:       params.CNIConfigManager,
+		clustermesh:            params.ClusterMesh,
+		monitorAgent:           params.MonitorAgent,
+		l2announcer:            params.L2Announcer,
+		l7Proxy:                params.L7Proxy,
+		db:                     params.DB,
 	}
 
 	d.configModifyQueue = eventqueue.NewEventQueueBuffered("config-modify-queue", ConfigModifyQueueSize)
