@@ -80,15 +80,15 @@ func (n *Node) GetPoolUsedIPWithPrefixes(pool string) int {
 	return 0
 }
 
-func (n *Node) AllocateStaticIP(ctx context.Context, address string, interfaceId string, pool ipam.Pool) error {
-	return errors.New("AllocateStaticIP function for AWS ENI is not supported")
+func (n *Node) AllocateStaticIP(ctx context.Context, address string, interfaceId string, pool ipam.Pool, portId string) (string, error) {
+	return "", errors.New("AllocateStaticIP function for AWS ENI is not supported")
 }
 
 func (n *Node) UnbindStaticIP(ctx context.Context, address string, pool string) error {
 	return errors.New("UnbindStaticIP function for AWS ENI is not supported")
 }
 
-func (n *Node) ReleaseStaticIP(address string, pool string) error {
+func (n *Node) ReleaseStaticIP(address string, pool string, portId string) error {
 	return errors.New("ReleaseStaticIP function for AWS ENI is not supported")
 }
 
@@ -219,7 +219,7 @@ func (n *Node) PrepareIPRelease(excessIPs int, scopedLog *logrus.Entry, pool ipa
 }
 
 // ReleaseIPs performs the ENI IP release operation
-func (n *Node) ReleaseIPs(ctx context.Context, r *ipam.ReleaseAction) error {
+func (n *Node) ReleaseIPs(ctx context.Context, r *ipam.ReleaseAction, pool string) error {
 	return n.manager.api.UnassignPrivateIpAddresses(ctx, r.InterfaceID, r.IPsToRelease)
 }
 

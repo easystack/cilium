@@ -504,6 +504,15 @@ func (in *IPPoolSpec) DeepEqual(other *IPPoolSpec) bool {
 	if in.VPCId != other.VPCId {
 		return false
 	}
+	if in.Watermark != other.Watermark {
+		return false
+	}
+	if in.FillingInterval != other.FillingInterval {
+		return false
+	}
+	if in.FilingStep != other.FilingStep {
+		return false
+	}
 
 	return true
 }
@@ -534,6 +543,13 @@ func (in *IPPoolStatus) DeepEqual(other *IPPoolStatus) bool {
 				}
 			}
 		}
+	}
+
+	if in.Active != other.Active {
+		return false
+	}
+	if in.MaxPortsReached != other.MaxPortsReached {
+		return false
 	}
 
 	return true
@@ -638,6 +654,9 @@ func (in *StaticIPSpec) DeepEqual(other *StaticIPSpec) bool {
 		return false
 	}
 	if in.ENIId != other.ENIId {
+		return false
+	}
+	if in.PortId != other.PortId {
 		return false
 	}
 

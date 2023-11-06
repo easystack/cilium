@@ -739,6 +739,9 @@ func (n *NodeDiscovery) mutateNodeResource(nodeResource *ciliumv2.CiliumNode) er
 			if c.IPAM.MinAllocate != 0 {
 				nodeResource.Spec.IPAM.MinAllocate = c.IPAM.MinAllocate
 			}
+			if c.IPAM.MaxAboveWatermark != 0 {
+				nodeResource.Spec.IPAM.MaxAboveWatermark = c.IPAM.MaxAboveWatermark
+			}
 		}
 	}
 

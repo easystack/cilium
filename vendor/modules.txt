@@ -537,11 +537,12 @@ github.com/google/renameio/v2
 # github.com/google/uuid v1.3.0
 ## explicit
 github.com/google/uuid
-# github.com/gophercloud/gophercloud v1.5.0 => github.com/easystack/gophercloud v1.5.1
+# github.com/gophercloud/gophercloud v1.5.0 => github.com/easystack/gophercloud v1.5.3
 ## explicit; go 1.20
 github.com/gophercloud/gophercloud
 github.com/gophercloud/gophercloud/openstack
 github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/attachinterfaces
+github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/availabilityzones
 github.com/gophercloud/gophercloud/openstack/identity/v2/tenants
 github.com/gophercloud/gophercloud/openstack/identity/v2/tokens
 github.com/gophercloud/gophercloud/openstack/identity/v3/extensions/ec2tokens
@@ -1843,7 +1844,7 @@ sigs.k8s.io/structured-merge-diff/v4/value
 # sigs.k8s.io/yaml v1.3.0
 ## explicit; go 1.12
 sigs.k8s.io/yaml
-# github.com/gophercloud/gophercloud => github.com/easystack/gophercloud v1.5.1
+# github.com/gophercloud/gophercloud => github.com/easystack/gophercloud v1.5.3
 # github.com/miekg/dns => github.com/cilium/dns v1.1.51-0.20220729113855-5b94b11b46fc
 # go.universe.tf/metallb => github.com/cilium/metallb v0.1.1-0.20220829170633-5d7dfb1129f7
 # k8s.io/client-go => github.com/cilium/client-go v0.27.2-fix

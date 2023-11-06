@@ -50,6 +50,15 @@ type IPPoolSpec struct {
 
 	// +kubebuilder:validation:Optional
 	VPCId string `json:"vpc-id"`
+
+	// +kubebuilder:validation:Optional
+	Watermark string `json:"watermark"`
+
+	// +kubebuilder:validation:Optional
+	FillingInterval string `json:"filling-interval"`
+
+	// +kubebuilder:validation:Optional
+	FilingStep string `json:"filing-step"`
 }
 
 // IPPoolStatus describe the status of the nodes which uses the pool
@@ -57,6 +66,12 @@ type IPPoolStatus struct {
 	// Items is a list of CiliumPodIPPools.
 	// +kubebuilder:validation:Optional
 	Items map[string]ItemSpec `json:"items"`
+
+	// +kubebuilder:validation:Optional
+	Active bool `json:"active"`
+
+	// +kubebuilder:validation:Optional
+	MaxPortsReached bool `json:"max-ports-reached"`
 }
 
 // ItemSpec describe the status of the node which uses the pool

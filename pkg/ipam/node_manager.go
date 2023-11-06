@@ -88,7 +88,7 @@ type NodeOperations interface {
 
 	// ReleaseIPs is called after invoking PrepareIPRelease and needs to
 	// perform the release of IPs.
-	ReleaseIPs(ctx context.Context, release *ReleaseAction) error
+	ReleaseIPs(ctx context.Context, release *ReleaseAction, pool string) error
 
 	// GetMaximumAllocatableIPv4 returns the maximum amount of IPv4 addresses
 	// that can be allocated to the instance
@@ -111,13 +111,13 @@ type NodeOperations interface {
 
 	// AllocateStaticIP is called after invoking PrepareIPAllocation and needs
 	// to allocate the static ip on specific eni.
-	AllocateStaticIP(ctx context.Context, address string, interfaceId string, pool Pool) error
+	AllocateStaticIP(ctx context.Context, address string, interfaceId string, pool Pool, portId string) (string, error)
 
 	// UnbindStaticIP is called to unbind the static ip from eni but retain the neutron port
 	UnbindStaticIP(ctx context.Context, address string, poolID string) error
 
 	// ReleaseStaticIP is called to delete the neutron port
-	ReleaseStaticIP(address string, pool string) error
+	ReleaseStaticIP(address string, pool string, portId string) error
 }
 
 // AllocationImplementation is the interface an implementation must provide.
@@ -327,7 +327,7 @@ func (n *NodeManager) Upsert(resource *v2.CiliumNode) {
 		ctx, cancel := context.WithCancel(context.Background())
 		// InstanceAPI is stale and the instances API is stable then do resync instancesAPI to sync instances
 		if !n.instancesAPI.HasInstance(resource.InstanceID()) && n.stableInstancesAPI {
-			if syncTime := n.instancesAPI.Resync(ctx); syncTime.IsZero() {
+			if syncTime := n.instancesAPI.InstanceSync(ctx, resource.Spec.InstanceID); syncTime.IsZero() {
 				node.logger().Warning("Failed to resync the instances from the API after new node was found")
 				n.stableInstancesAPI = false
 			} else {
@@ -625,7 +625,7 @@ func (n *NodeManager) SyncMultiPool(node *Node) error {
 				if hasIps {
 					// If both ENI and pool annotation exist, create the crdPool and set pool status to Active
 					node.pools[Pool(p)] = NewCrdPool(Pool(p), node, n.releaseExcessIPs, Active)
-					err := k8sManager.UpdateCiliumIPPoolStatus(p, node.name, "Ready", "Created crd pool success.")
+					err := UpdateCiliumIPPoolStatus(p, node.name, "Ready", "Created crd pool success.", false)
 					if err != nil {
 						log.Errorf("Update CiliumIPPool status failed, error is %s.", err)
 					}
@@ -634,7 +634,7 @@ func (n *NodeManager) SyncMultiPool(node *Node) error {
 
 				if hasENI {
 					node.pools[Pool(p)] = NewCrdPool(Pool(p), node, n.releaseExcessIPs, WaitingForAllocate)
-					err := k8sManager.UpdateCiliumIPPoolStatus(p, node.name, "NotReady", "Pool is not ready, is waiting for allocate.")
+					err := UpdateCiliumIPPoolStatus(p, node.name, "NotReady", "Pool is not ready, is waiting for allocate.", false)
 					if err != nil {
 						log.Errorf("Update CiliumIPPool status failed, error is %s.", err)
 					}
@@ -643,7 +643,7 @@ func (n *NodeManager) SyncMultiPool(node *Node) error {
 
 				// upper pool limit
 				if len(node.pools) == MaxPools {
-					err := k8sManager.UpdateCiliumIPPoolStatus(p, node.name, "NotReady", "The node has reached the upper pool limit.")
+					err := UpdateCiliumIPPoolStatus(p, node.name, "NotReady", "The node has reached the upper pool limit.", false)
 					if err != nil {
 						log.Errorf("Update CiliumIPPool status failed, error is %s.", err)
 					}
@@ -658,7 +658,7 @@ func (n *NodeManager) SyncMultiPool(node *Node) error {
 
 				// upper eni limit
 				if len(node.resource.Status.OpenStack.ENIs) == limit.Adapters {
-					err := k8sManager.UpdateCiliumIPPoolStatus(p, node.name, "NotReady", "The node has reached the upper eni limit.")
+					err := UpdateCiliumIPPoolStatus(p, node.name, "NotReady", "The node has reached the upper eni limit.", false)
 					if err != nil {
 						log.Errorf("Update CiliumIPPool status failed, error is %s.", err)
 					}
@@ -667,7 +667,7 @@ func (n *NodeManager) SyncMultiPool(node *Node) error {
 
 				// Meet the crdPool creation requirements
 				node.pools[Pool(p)] = NewCrdPool(Pool(p), node, n.releaseExcessIPs, WaitingForAllocate)
-				err := k8sManager.UpdateCiliumIPPoolStatus(p, node.name, "NotReady", "Pool is not ready, is waiting for allocate.")
+				err := UpdateCiliumIPPoolStatus(p, node.name, "NotReady", "Pool is not ready, is waiting for allocate.", false)
 				if err != nil {
 					log.Errorf("Update CiliumIPPool status failed, error is %s.", err)
 				}

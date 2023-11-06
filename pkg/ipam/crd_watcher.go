@@ -180,7 +180,11 @@ func (extraManager) reSyncCompleted() {
 }
 
 // ListCiliumIPPool returns all the *v2alpha1.CiliumPodIPPool from crdPoolStore
-func (extraManager) ListCiliumIPPool() []*v2alpha1.CiliumPodIPPool {
+func ListCiliumIPPool() []*v2alpha1.CiliumPodIPPool {
+	if crdPoolStore == nil {
+		log.Infoln("crd pool store is not ready")
+		return nil
+	}
 	poolsInt := crdPoolStore.List()
 	out := make([]*v2alpha1.CiliumPodIPPool, 0, len(poolsInt))
 	for i := range poolsInt {
@@ -273,15 +277,15 @@ func (m extraManager) updateStaticIP(ipCrd *v2alpha1.CiliumStaticIP) {
 		log.Infof("ready to assign ip: %v for pod: %v, on node: %v .", ip, podFullName, node)
 		if n, ok := k8sManager.nodeManager.nodes[node]; ok {
 			if p, ok := n.pools[Pool(pool)]; ok {
-				eniID, err := p.allocateStaticIP(ip, Pool(pool))
+				portId, eniID, err := p.allocateStaticIP(ip, Pool(pool), ipCrd.Spec.PortId)
 				if err != nil {
 					errMsg := fmt.Sprintf("allocate static ip: %v for pod %v failed: %s.", ip, podFullName, err)
-					k8sManager.UpdateCiliumStaticIP(ipCrd, v2alpha1.WaitingForAssign, errMsg, "")
+					k8sManager.UpdateCiliumStaticIP(ipCrd, v2alpha1.WaitingForAssign, errMsg, "", "")
 					return
 				}
 				// allocate static ip success, so operator need to update the ciliumnode resource.
 				k8sManager.requireSync(n)
-				k8sManager.UpdateCiliumStaticIP(ipCrd, v2alpha1.Assigned, "", eniID)
+				k8sManager.UpdateCiliumStaticIP(ipCrd, v2alpha1.Assigned, "", eniID, portId)
 			} else {
 				log.Errorf("can't not found pool %s on node %s, assign ip:%s for pod %s  cancel.", pool, node, ip, podFullName)
 				return
@@ -308,16 +312,16 @@ func (m extraManager) updateStaticIP(ipCrd *v2alpha1.CiliumStaticIP) {
 		ipPool, err := k8sManager.GetCiliumPodIPPool(pool)
 		if err != nil {
 			log.Errorf("get ciliumPodIPPool failed, error is %s.", err)
-			k8sManager.UpdateCiliumStaticIP(ipCrd, v2alpha1.Idle, err.Error(), "")
+			k8sManager.UpdateCiliumStaticIP(ipCrd, v2alpha1.Idle, err.Error(), "", "")
 		} else {
 			if n, ok := k8sManager.nodeManager.nodes[node]; ok {
 				err = n.Ops().UnbindStaticIP(context.TODO(), ipCrd.Spec.IP, ipPool.Spec.VPCId)
 				if err != nil {
 					log.Errorf("unbind static ip %s failed, error is %s", ip, err)
-					k8sManager.UpdateCiliumStaticIP(ipCrd, v2alpha1.Idle, err.Error(), "")
+					k8sManager.UpdateCiliumStaticIP(ipCrd, v2alpha1.Idle, err.Error(), "", "")
 					return
 				} else {
-					k8sManager.UpdateCiliumStaticIP(ipCrd, v2alpha1.Unbind, "", "")
+					k8sManager.UpdateCiliumStaticIP(ipCrd, v2alpha1.Unbind, "", "", "")
 				}
 			}
 		}
@@ -337,10 +341,10 @@ func (m extraManager) updateStaticIP(ipCrd *v2alpha1.CiliumStaticIP) {
 			if am, ok := n.resource.Spec.IPAM.CrdPools[pool]; ok {
 				if _, ok := am[ip]; !ok {
 					log.Debugf("ready to delete static ip %s for pod %s on node: %s", ip, podFullName, node)
-					err := n.Ops().ReleaseStaticIP(ip, pool)
+					err := n.Ops().ReleaseStaticIP(ip, pool, ipCrd.Spec.PortId)
 					if err != nil {
 						errMsg := fmt.Sprintf("delete static ip: %v for pod %v failed: %s.", ip, podFullName, err)
-						k8sManager.UpdateCiliumStaticIP(ipCrd, v2alpha1.WaitingForRelease, errMsg, "")
+						k8sManager.UpdateCiliumStaticIP(ipCrd, v2alpha1.WaitingForRelease, errMsg, "", "")
 						return
 					}
 					log.Infof("delete static ip %s for pod %s on node %s success.", ip, podFullName, node)
@@ -504,7 +508,7 @@ func (extraManager) maintainStaticIPCRDs(stop <-chan struct{}) {
 }
 
 func (extraManager) updateCiliumNodeManagerPool() {
-	for _, ipPool := range k8sManager.ListCiliumIPPool() {
+	for _, ipPool := range ListCiliumIPPool() {
 		k8sManager.nodeManager.pools[ipPool.Name] = ipPool
 	}
 }
@@ -639,38 +643,45 @@ func SyncPoolToAPIServer(subnets ipamTypes.SubnetMap) {
 			k8sManager.CreateDefaultPool(subnets)
 		},
 	)
-	for _, p := range k8sManager.ListCiliumIPPool() {
-		if p.Spec.CIDR == "" || p.Spec.VPCId == "" {
-			if subnet, ok := subnets[p.Spec.SubnetId]; ok {
+	for _, p := range ListCiliumIPPool() {
+		if subnet, ok := subnets[p.Spec.SubnetId]; ok {
+			if !p.Status.Active || (p.Spec.CIDR == "" || p.Spec.VPCId == "") {
 				newPool := p.DeepCopy()
 				newPool.Spec.VPCId = subnet.VirtualNetworkID
 				newPool.Spec.CIDR = subnet.CIDR.String()
+				newPool.Status.Active = true
 				_, err := k8sManager.alphaClient.CiliumPodIPPools().Update(context.TODO(), newPool, v1.UpdateOptions{})
 				if err != nil {
 					log.Errorf("Update ciliumPodIPPool %s failed, error is %s", p.Name, err)
 				}
 			}
 		}
+
 	}
 }
-func (extraManager) UpdateCiliumIPPoolStatus(pool string, node string, status, phase string) error {
+func UpdateCiliumIPPoolStatus(pool string, node string, status, phase string, maxPoolReached bool) error {
 	ipPool, err := k8sManager.GetCiliumPodIPPool(pool)
 	if err != nil {
 		return err
 	}
 
 	ipPool = ipPool.DeepCopy()
-	m := map[string]v2alpha1.ItemSpec{}
-	if ipPool.Status.Items != nil {
-		m = ipPool.Status.Items
+	if maxPoolReached {
+		ipPool.Status.MaxPortsReached = maxPoolReached
 	}
+	if node != "" {
+		m := map[string]v2alpha1.ItemSpec{}
+		if ipPool.Status.Items != nil {
+			m = ipPool.Status.Items
+		}
 
-	m[node] = v2alpha1.ItemSpec{
-		Phase:  phase,
-		Status: status,
+		m[node] = v2alpha1.ItemSpec{
+			Phase:  phase,
+			Status: status,
+		}
+
+		ipPool.Status.Items = m
 	}
-
-	ipPool.Status.Items = m
 
 	_, err = k8sManager.alphaClient.CiliumPodIPPools().Update(context.TODO(), ipPool, v1.UpdateOptions{})
 	if err != nil {
@@ -680,7 +691,7 @@ func (extraManager) UpdateCiliumIPPoolStatus(pool string, node string, status, p
 	return nil
 }
 
-func (extraManager) UpdateCiliumStaticIP(csip *v2alpha1.CiliumStaticIP, status, phase string, eniId string) {
+func (extraManager) UpdateCiliumStaticIP(csip *v2alpha1.CiliumStaticIP, status, phase string, eniId string, portId string) {
 	now := time.Now()
 	podFullName := csip.Namespace + "/" + csip.Name
 
@@ -693,6 +704,8 @@ func (extraManager) UpdateCiliumStaticIP(csip *v2alpha1.CiliumStaticIP, status, 
 		csip.Spec.ENIId = ""
 	}
 	csip.Spec.ENIId = eniId
+	csip.Spec.PortId = portId
+
 	csip.Status.IPStatus = status
 	csip.Status.Phase = phase
 	csip.Status.UpdateTime = slim_metav1.Time(v1.Time{
