@@ -59,6 +59,9 @@ type StaticIPSpec struct {
 
 	// +kubebuilder:validation:Optional
 	ENIId string `json:"eni-id"`
+
+	// +kubebuilder:validation:Optional
+	PortId string `json:"port-id"`
 }
 
 type StaticIPStatus struct {

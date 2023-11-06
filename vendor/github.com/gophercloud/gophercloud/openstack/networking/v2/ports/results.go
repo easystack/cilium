@@ -12,6 +12,21 @@ type commonResult struct {
 	gophercloud.Result
 }
 
+type bulkResult struct {
+	gophercloud.Result
+}
+
+// Extract is a function that accepts a result and extracts []port resource.
+func (r bulkResult) Extract() ([]Port, error) {
+	var s []Port
+	err := r.ExtractInto(&s)
+	return s, err
+}
+
+func (r bulkResult) ExtractInto(v interface{}) error {
+	return r.Result.ExtractIntoSlicePtr(v, "ports")
+}
+
 // Extract is a function that accepts a result and extracts a port resource.
 func (r commonResult) Extract() (*Port, error) {
 	var s Port
@@ -27,6 +42,12 @@ func (r commonResult) ExtractInto(v interface{}) error {
 // method to interpret it as a Port.
 type CreateResult struct {
 	commonResult
+}
+
+// BulkCreateResult represents the result of a create operation. Call its Extract
+// method to interpret it as []Port.
+type BulkCreateResult struct {
+	bulkResult
 }
 
 // GetResult represents the result of a get operation. Call its Extract

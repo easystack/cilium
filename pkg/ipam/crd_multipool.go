@@ -24,6 +24,7 @@ type pool interface {
 	waitingForMaintenance() bool
 	GetAvailable() ipamTypes.AllocationMap
 	getPreAllocate() int
+	getMaxAboveWatermark() int
 	getMinAllocate() int
 	getMaxAllocate() int
 	getStatics() *Statistics
@@ -31,7 +32,7 @@ type pool interface {
 	updateLastResync(syncTime time.Time)
 	poolMaintenanceComplete()
 	requireResync()
-	allocateStaticIP(ip string, pool Pool) (string, error)
+	allocateStaticIP(ip string, pool Pool, portId string) (string, string, error)
 	requireSyncCsip()
 	syncCsipComplete()
 	waitingForSyncCsip() bool
@@ -150,6 +151,7 @@ type crdPool struct {
 // returns instanceMutated which tracks if state changed with the cloud provider and is used
 // to determine if IPAM pool maintainer trigger func needs to be invoked.
 func (p *crdPool) maintainCRDIPPool(ctx context.Context) (poolMutated bool, err error) {
+	log.Errorf("@@@@@@@@@@@@ maintainCRDIPPool pool %s,node %s", p.name, p.node.name)
 	if p.status == Active || p.status == WaitingForAllocate {
 		a, err := p.determinePoolMaintenanceAction()
 		if err != nil {
@@ -318,7 +320,7 @@ func (p *crdPool) handleMultiPoolIPAllocation(ctx context.Context, a *maintenanc
 //
 // Handshake would be aborted if there are new allocations and the node doesn't have IPs in excess anymore.
 func (p *crdPool) handleIPRelease(ctx context.Context, a *maintenanceAction) (instanceMutated bool, err error) {
-	return p.node.handleIPRelease(ctx, a)
+	return p.node.handleIPRelease(ctx, a, p.name.String())
 }
 
 // abortNoLongerExcessIPs allows for aborting release of IP if new allocations on the node result in a change of excess
@@ -391,7 +393,17 @@ func (p *crdPool) recalculate(allocate ipamTypes.AllocationMap, stats ipamStats.
 //
 // n.mutex must be held when calling this function
 func (p *crdPool) getPreAllocate() int {
+	if p.node.resource.Spec.IPAM.PreAllocate != 0 {
+		return p.node.resource.Spec.IPAM.PreAllocate
+	}
 	return defaults.IPAMPreAllocation
+}
+
+// getMaxAboveWatermark returns the max-above-watermark setting for an AWS node
+//
+// n.mutex must be held when calling this function
+func (p *crdPool) getMaxAboveWatermark() int {
+	return p.node.resource.Spec.IPAM.MaxAboveWatermark
 }
 
 // getMinAllocate returns the minimum-allocation setting of an AWS node
@@ -497,15 +509,15 @@ func (p *crdPool) requireResync() {
 	p.resyncNeeded = time.Now()
 }
 
-func (p *crdPool) allocateStaticIP(ip string, pool Pool) (string, error) {
-	eniID, err, stats := p.node.AllocateStaticIP(ip, pool)
+func (p *crdPool) allocateStaticIP(ip string, pool Pool, portID string) (string, string, error) {
+	pId, eniID, err, stats := p.node.AllocateStaticIP(ip, pool, portID)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	if stats != nil {
 		p.stats = stats
 	}
-	return eniID, nil
+	return pId, eniID, nil
 }
 
 func (p *crdPool) requireSyncCsip() {

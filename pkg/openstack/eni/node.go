@@ -6,9 +6,6 @@ package eni
 import (
 	"context"
 	"fmt"
-	"github.com/sirupsen/logrus"
-	"sync"
-
 	"github.com/cilium/cilium/pkg/defaults"
 	"github.com/cilium/cilium/pkg/ipam"
 	"github.com/cilium/cilium/pkg/ipam/stats"
@@ -19,6 +16,7 @@ import (
 	"github.com/cilium/cilium/pkg/openstack/eni/limits"
 	eniTypes "github.com/cilium/cilium/pkg/openstack/eni/types"
 	"github.com/cilium/cilium/pkg/openstack/utils"
+	"github.com/sirupsen/logrus"
 )
 
 // The following error constants represent the error conditions for
@@ -65,8 +63,6 @@ type Node struct {
 
 	// poolsEnis is the list of eniIDs that belong to the ipam.Pool
 	poolsEnis map[ipam.Pool][]string
-
-	ifaceMutex sync.Mutex
 }
 
 // UpdatedNode is called when an update to the CiliumNode is received.
@@ -145,7 +141,7 @@ func (n *Node) CreateInterface(ctx context.Context, allocation *ipam.AllocationA
 	scopedLog.Info("No more IPs available, creating new ENI")
 
 	instanceID := n.node.InstanceID()
-	eniID, eni, err := n.manager.api.CreateNetworkInterface(ctx, subnet.ID, subnet.VirtualNetworkID, instanceID, securityGroupIDs, pool)
+	eniID, eni, err := n.manager.api.CreateNetworkInterface(ctx, subnet.ID, subnet.VirtualNetworkID, instanceID, securityGroupIDs, string(pool))
 	if err != nil {
 		return 0, unableToCreateENI, fmt.Errorf("%s %s", errUnableToCreateENI, err)
 	}
@@ -338,9 +334,7 @@ func (n *Node) PrepareIPAllocation(scopedLog *logrus.Entry, pool ipam.Pool) (*ip
 // AllocateIPs performs the ENI allocation operation
 func (n *Node) AllocateIPs(ctx context.Context, a *ipam.AllocationAction, pool ipam.Pool) error {
 	log.Infof("@@@@@@@@@@@@@@@@@@@ Do Allocate IPs..... for node %s", n.node.InstanceID())
-	n.ifaceMutex.Lock()
-	defer n.ifaceMutex.Unlock()
-	_, err := n.manager.api.AssignPrivateIPAddresses(ctx, a.InterfaceID, a.AvailableForAllocation)
+	_, err := n.manager.api.AssignPrivateIPAddresses(ctx, a.InterfaceID, a.AvailableForAllocation, pool.String())
 	return err
 }
 
@@ -405,10 +399,8 @@ func (n *Node) PrepareIPRelease(excessIPs int, scopedLog *logrus.Entry, pool ipa
 }
 
 // ReleaseIPs performs the ENI IP release operation
-func (n *Node) ReleaseIPs(ctx context.Context, r *ipam.ReleaseAction) error {
-	n.ifaceMutex.Lock()
-	defer n.ifaceMutex.Unlock()
-	isEmpty, err := n.manager.api.UnassignPrivateIPAddresses(ctx, r.InterfaceID, r.IPsToRelease)
+func (n *Node) ReleaseIPs(ctx context.Context, r *ipam.ReleaseAction, pool string) error {
+	isEmpty, err := n.manager.api.UnassignPrivateIPAddresses(ctx, r.InterfaceID, r.IPsToRelease, "")
 	if err != nil {
 		return err
 	}
@@ -629,38 +621,15 @@ func (n *Node) ResyncInterfacesAndIPsByPool(ctx context.Context, scopedLog *logr
 	return poolAvailable, stats, nil
 }
 
-func (n *Node) AllocateStaticIP(ctx context.Context, address string, interfaceId string, pool ipam.Pool) error {
+func (n *Node) AllocateStaticIP(ctx context.Context, address string, interfaceId string, pool ipam.Pool, portId string) (string, error) {
 	log.Infof("@@@@@@@@@@@@@@@@@@@ Do Allocate static IP..... %v", address)
 
-	n.ifaceMutex.Lock()
-	err := n.manager.api.AssignStaticPrivateIPAddresses(ctx, interfaceId, address)
-	n.ifaceMutex.Unlock()
+	portId, err := n.manager.api.AssignStaticPrivateIPAddresses(ctx, interfaceId, address, portId)
 	if err != nil {
-		return err
+		return "", err
 	}
 
-	n.mutex.Lock()
-	defer n.mutex.Unlock()
-
-	if _, ok := n.k8sObj.Status.OpenStack.ENIs[interfaceId]; !ok {
-		return fmt.Errorf("eni not found on node")
-	}
-	eni := n.k8sObj.Status.OpenStack.ENIs[interfaceId]
-	secondaryIPSets := eni.SecondaryIPSets
-	privateIP := eniTypes.PrivateIPSet{
-		IpAddress: address,
-	}
-	secondaryIPSets = append(secondaryIPSets, privateIP)
-	eni.SecondaryIPSets = secondaryIPSets
-	n.k8sObj.Status.OpenStack.ENIs[interfaceId] = eni
-
-	if allocationMap, ok := n.k8sObj.Spec.IPAM.CrdPools[pool.String()]; ok {
-		allocationMap[address] = ipamTypes.AllocationIP{
-			Resource: interfaceId,
-		}
-		n.k8sObj.Spec.IPAM.CrdPools[pool.String()] = allocationMap
-	}
-	return nil
+	return portId, nil
 }
 
 func (n *Node) UnbindStaticIP(ctx context.Context, address string, vpcID string) error {
@@ -674,12 +643,12 @@ func (n *Node) UnbindStaticIP(ctx context.Context, address string, vpcID string)
 	return nil
 }
 
-func (n *Node) ReleaseStaticIP(address string, pool string) error {
+func (n *Node) ReleaseStaticIP(address string, pool string, portId string) error {
 	if enis, ok := n.poolsEnis[ipam.Pool(pool)]; ok && len(enis) > 0 {
 		if _, ok = n.k8sObj.Status.OpenStack.ENIs[enis[0]]; !ok {
 			return fmt.Errorf("eni %s not found on node %s", enis[0], n.k8sObj.Name)
 		}
-		err := n.manager.api.DeleteNeutronPort(address, n.k8sObj.Status.OpenStack.ENIs[enis[0]].VPC.ID)
+		err := n.manager.api.DeleteNeutronPort(address, n.k8sObj.Status.OpenStack.ENIs[enis[0]].VPC.ID, portId, pool)
 		if err != nil {
 			log.Errorf("release static failed: %v", err)
 			return err

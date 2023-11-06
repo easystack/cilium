@@ -20,22 +20,24 @@ import (
 
 // OpenStackAPI is the API surface used of the ECS API
 type OpenStackAPI interface {
-	GetInstances(ctx context.Context, subnets ipamTypes.SubnetMap, instanceIDs []string) (*ipamTypes.InstanceMap, error)
+	GetInstances(ctx context.Context, subnets ipamTypes.SubnetMap, azs []string) (*ipamTypes.InstanceMap, error)
 	GetSubnets(ctx context.Context) (ipamTypes.SubnetMap, error)
 	GetInstance(ctx context.Context, subnets ipamTypes.SubnetMap, instanceId string) (*ipamTypes.Instance, error)
 	GetVpcs(ctx context.Context) (ipamTypes.VirtualNetworkMap, error)
+	GetAzs(ctx context.Context) ([]string, error)
 	GetSecurityGroups(ctx context.Context) (types.SecurityGroupMap, error)
-	CreateNetworkInterface(ctx context.Context, subnetID, netID, instanceID string, groups []string, pool ipam.Pool) (string, *eniTypes.ENI, error)
+	CreateNetworkInterface(ctx context.Context, subnetID, netID, instanceID string, groups []string, pool string) (string, *eniTypes.ENI, error)
 	DeleteNetworkInterface(ctx context.Context, eniID string) error
 	AttachNetworkInterface(ctx context.Context, instanceID, eniID string) error
 	DetachNetworkInterface(ctx context.Context, instanceID, eniID string) error
-	AssignPrivateIPAddresses(ctx context.Context, eniID string, toAllocate int) ([]string, error)
-	UnassignPrivateIPAddresses(ctx context.Context, eniID string, addresses []string) (isEmpty bool, err error)
+	AssignPrivateIPAddresses(ctx context.Context, eniID string, toAllocate int, pool string) ([]string, error)
+	UnassignPrivateIPAddresses(ctx context.Context, eniID string, addresses []string, pool string) (isEmpty bool, err error)
 	AddTagToNetworkInterface(ctx context.Context, eniID string, tags string) error
 	UnassignPrivateIPAddressesRetainPort(ctx context.Context, subNetID string, address string) error
-	AssignStaticPrivateIPAddresses(ctx context.Context, eniID string, address string) error
-	DeleteNeutronPort(address string, networkID string) error
+	AssignStaticPrivateIPAddresses(ctx context.Context, eniID string, address string, portId string) (string, error)
+	DeleteNeutronPort(address string, networkID string, portId string, pool string) error
 	ListNetworkInterface(ctx context.Context, instanceID string) ([]attachinterfaces.Interface, error)
+	RefreshAvailablePool()
 }
 
 // InstancesManager maintains the list of instances. It must be kept up to date
@@ -197,6 +199,14 @@ func (m *InstancesManager) InstanceSync(ctx context.Context, instanceID string) 
 func (m *InstancesManager) resync(ctx context.Context, instanceID string) time.Time {
 	resyncStart := time.Now()
 
+	azs, err := m.api.GetAzs(ctx)
+	if err != nil {
+		log.WithError(err).Warning("Unable to synchronize AZ list")
+		return time.Time{}
+	}
+
+	log.Infof("##### az list is %+v", azs)
+
 	subnets, err := m.api.GetSubnets(ctx)
 	if err != nil {
 		log.WithError(err).Warning("Unable to retrieve VPC vSwitches list")
@@ -207,18 +217,16 @@ func (m *InstancesManager) resync(ctx context.Context, instanceID string) time.T
 	// will be refetched from EC2 API and updated to the local cache. Otherwise only
 	// the given instance will be updated.
 	if instanceID == "" {
-		m.mutex.Lock()
-		instanceIds := m.getInstanceIdLocked()
-		m.mutex.Unlock()
-		instances, err := m.api.GetInstances(ctx, subnets, instanceIds)
+		go m.api.RefreshAvailablePool()
+		instances, err := m.api.GetInstances(ctx, subnets, azs)
 		if err != nil {
 			log.WithError(err).Warning("Unable to synchronize ECS interface list")
 			return time.Time{}
 		}
 
 		log.WithFields(logrus.Fields{
-			"numInstances":      instances.NumInstances(),
-			"numSubnets":        len(subnets),
+			"numInstances": instances.NumInstances(),
+			"numSubnets":   len(subnets),
 		}).Info("Synchronized OpenStack ENI information")
 
 		m.mutex.Lock()
@@ -232,9 +240,9 @@ func (m *InstancesManager) resync(ctx context.Context, instanceID string) time.T
 		}
 
 		log.WithFields(logrus.Fields{
-			"instance":          instanceID,
-			"numSubnets":        len(subnets),
-		}).Info("Synchronized ENI information for the corresponding instance")
+			"instance":   instanceID,
+			"numSubnets": len(subnets),
+		}).Infof("Synchronized ENI information for the corresponding instance %d", instanceID)
 
 		m.mutex.Lock()
 		defer m.mutex.Unlock()

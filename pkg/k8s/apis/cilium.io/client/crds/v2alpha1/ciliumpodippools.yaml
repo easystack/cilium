@@ -42,6 +42,10 @@ spec:
             properties:
               cidr:
                 type: string
+              filing-step:
+                type: string
+              filling-interval:
+                type: string
               ipv4:
                 description: IPv4 specifies the IPv4 CIDRs and mask sizes of the pool
                 properties:
@@ -91,11 +95,15 @@ spec:
                     rule: self == oldSelf
               vpc-id:
                 type: string
+              watermark:
+                type: string
             type: object
           status:
             description: IPPoolStatus describe the status of the nodes which uses
               the pool
             properties:
+              active:
+                type: boolean
               items:
                 additionalProperties:
                   description: ItemSpec describe the status of the node which uses
@@ -108,6 +116,8 @@ spec:
                   type: object
                 description: Items is a list of CiliumPodIPPools.
                 type: object
+              max-ports-reached:
+                type: boolean
             type: object
         required:
         - spec

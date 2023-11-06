@@ -791,7 +791,7 @@ func (n *Node) deleteLocalReleaseStatus(ip string) {
 // * released           : IP successfully released. Set by operator
 //
 // Handshake would be aborted if there are new allocations and the node doesn't have IPs in excess anymore.
-func (n *Node) handleIPRelease(ctx context.Context, a *maintenanceAction) (instanceMutated bool, err error) {
+func (n *Node) handleIPRelease(ctx context.Context, a *maintenanceAction, pool string) (instanceMutated bool, err error) {
 	scopedLog := n.logger()
 	var ipsToMark []string
 	var ipsToRelease []string
@@ -874,7 +874,7 @@ func (n *Node) handleIPRelease(ctx context.Context, a *maintenanceAction) (insta
 		})
 		scopedLog.Info("Releasing excess IPs from node")
 		start := time.Now()
-		err := n.ops.ReleaseIPs(ctx, a.release)
+		err := n.ops.ReleaseIPs(ctx, a.release, pool)
 		if err == nil {
 			n.manager.metricsAPI.ReleaseAttempt(releaseIP, success, string(a.release.PoolID), metrics.SinceInSeconds(start))
 			n.manager.metricsAPI.AddIPRelease(string(a.release.PoolID), int64(len(a.release.IPsToRelease)))
@@ -928,44 +928,6 @@ func (n *Node) handleIPAllocation(ctx context.Context, a *maintenanceAction) (in
 	}
 
 	return n.createInterface(ctx, a.allocation, "")
-}
-
-// maintainIPPool attempts to allocate or release all required IPs to fulfill the needed gap.
-// returns instanceMutated which tracks if state changed with the cloud provider and is used
-// to determine if IPAM pool maintainer trigger func needs to be invoked.
-func (n *Node) maintainIPPool(ctx context.Context) (instanceMutated bool, err error) {
-	if n.manager.releaseExcessIPs {
-		n.removeStaleReleaseIPs()
-	}
-	a, err := n.determineMaintenanceAction()
-	if err != nil {
-		n.abortNoLongerExcessIPs(nil)
-		return false, err
-	}
-
-	scopedLog := n.logger()
-	if a != nil {
-		if a.allocation != nil {
-			scopedLog.Infof("########## maintainIPPool allocate is %+v", a.allocation)
-		}
-		if a.release != nil {
-			scopedLog.Infof("########## maintainIPPool  release is %+v", a.release)
-		}
-	} else {
-		scopedLog.Infof("########## maintainIPPool  action is nil")
-	}
-
-	// Maintenance request has already been fulfilled
-	if a == nil {
-		n.abortNoLongerExcessIPs(nil)
-		return false, nil
-	}
-
-	if instanceMutated, err := n.handleIPRelease(ctx, a); instanceMutated || err != nil {
-		return instanceMutated, err
-	}
-
-	return n.handleIPAllocation(ctx, a)
 }
 
 func (n *Node) isInstanceRunning() (isRunning bool) {
@@ -1220,19 +1182,17 @@ func (n *Node) update(origNode, node *v2.CiliumNode, attempts int, status bool) 
 	return err
 }
 
-func (n *Node) AllocateStaticIP(ip string, pool Pool) (string, error, *Statistics) {
+func (n *Node) AllocateStaticIP(ip string, pool Pool, portId string) (string, string, error, *Statistics) {
 
 	scopedLog := n.logger()
-	retryCount := 1
 	p := n.pools[pool]
 	stats := p.getStatics()
 	n.allocateStaticIpMutex.Lock()
 	defer n.allocateStaticIpMutex.Unlock()
 
-retry:
 	allocation, err := n.ops.PrepareIPAllocation(scopedLog, pool)
 	if err != nil {
-		return "", err, nil
+		return "", "", err, nil
 	}
 
 	allocation.MaxIPsToAllocate = 1
@@ -1257,7 +1217,7 @@ retry:
 
 	if allocation == nil {
 		scopedLog.Debug("No allocation action required")
-		return "", errors.New("allocate static ip failed, no allocation action required"), nil
+		return "", "", errors.New("allocate static ip failed, no allocation action required"), nil
 	}
 
 	// Assign needed addresses
@@ -1266,42 +1226,23 @@ retry:
 
 		start := time.Now()
 
-		err := n.ops.AllocateStaticIP(context.TODO(), ip, allocation.InterfaceID, pool)
+		portId, err = n.ops.AllocateStaticIP(context.TODO(), ip, allocation.InterfaceID, pool, portId)
 
 		if err == nil {
 			p.requireSyncCsip()
 			n.manager.metricsAPI.AllocationAttempt(allocateIP, success, string(allocation.PoolID), metrics.SinceInSeconds(start))
 			n.manager.metricsAPI.AddIPAllocation(string(allocation.PoolID), int64(allocation.AvailableForAllocation))
-			return allocation.InterfaceID, nil, stats
-		}
-
-		if strings.HasPrefix(err.Error(), AllocateStaticIPErr) {
-			return "", err, stats
+			return portId, allocation.InterfaceID, nil, stats
 		}
 
 		n.manager.metricsAPI.AllocationAttempt(allocateIP, failed, string(allocation.PoolID), metrics.SinceInSeconds(start))
 		scopedLog.WithFields(logrus.Fields{
 			"selectedInterface": allocation.InterfaceID,
 			"ipsToAllocate":     allocation.AvailableForAllocation,
-		}).WithError(err).Warning("Unable to assign additional IPs to interface, will create new interface")
-	}
-	created := false
-	if retryCount == 1 {
-		created, err = n.createInterface(context.TODO(), allocation, pool)
-		if err != nil {
-			log.Errorf("createInterface failed :%v", err)
-			return "", fmt.Errorf("creted interface failed: %v", err), nil
-		}
+		}).WithError(err).Warningf("Unable to assign additional IPs to interface %s", allocation.InterfaceID)
 	}
 
-	if created {
-		if retryCount > 0 {
-			retryCount--
-			goto retry
-		}
-	}
-
-	return "", fmt.Errorf("No slot is available. "), nil
+	return "", "", fmt.Errorf("No interface available. "), nil
 }
 
 // CrdPools returns the IP allocation pool available to the node

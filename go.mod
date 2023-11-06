@@ -258,7 +258,7 @@ require (
 )
 
 replace (
-	github.com/gophercloud/gophercloud => github.com/easystack/gophercloud v1.5.1
+	github.com/gophercloud/gophercloud => github.com/easystack/gophercloud v1.5.3
 
 	github.com/miekg/dns => github.com/cilium/dns v1.1.51-0.20220729113855-5b94b11b46fc
 

@@ -99,7 +99,7 @@ func (n *nodeOperationsMock) GetPoolUsedIPWithPrefixes(pool string) int {
 	panic("implement me")
 }
 
-func (n *nodeOperationsMock) AllocateStaticIP(ctx context.Context, address string, interfaceId string, pool Pool) error {
+func (n *nodeOperationsMock) AllocateStaticIP(ctx context.Context, address string, interfaceId string, pool Pool, portId string) (string, error) {
 	//TODO implement me
 	panic("implement me")
 }
@@ -109,7 +109,7 @@ func (n *nodeOperationsMock) UnbindStaticIP(ctx context.Context, address string,
 	panic("implement me")
 }
 
-func (n *nodeOperationsMock) ReleaseStaticIP(address string, pool string) error {
+func (n *nodeOperationsMock) ReleaseStaticIP(address string, pool string, portId string) error {
 	//TODO implement me
 	panic("implement me")
 }
@@ -190,7 +190,7 @@ func (n *nodeOperationsMock) releaseIP(ip string) error {
 	return fmt.Errorf("IP %s not found", ip)
 }
 
-func (n *nodeOperationsMock) ReleaseIPs(ctx context.Context, release *ReleaseAction) error {
+func (n *nodeOperationsMock) ReleaseIPs(ctx context.Context, release *ReleaseAction, pool string) error {
 	for _, ipToDelete := range release.IPsToRelease {
 		if err := n.releaseIP(ipToDelete); err != nil {
 			return fmt.Errorf("unable to release IP %s: %s", ipToDelete, err)

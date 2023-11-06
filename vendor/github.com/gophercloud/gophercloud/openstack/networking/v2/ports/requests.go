@@ -131,6 +131,36 @@ func (opts CreateOpts) ToPortCreateMap() (map[string]interface{}, error) {
 	return gophercloud.BuildRequestBody(opts, "port")
 }
 
+// BulkCreateOpts represents the attributes used when creating bulk new ports.
+type BulkCreateOpts struct {
+	Ports []CreateOpts `json:"ports"`
+}
+
+// BulkCreateOptsBuilder allows extensions to add additional parameters to the
+// Create request.
+type BulkCreateOptsBuilder interface {
+	ToBulkPortCreateMap() (map[string]interface{}, error)
+}
+
+// ToBulkPortCreateMap builds a request body from BulkCreateOpts.
+func (opts BulkCreateOpts) ToBulkPortCreateMap() (map[string]interface{}, error) {
+	return gophercloud.BuildRequestBody(opts, "")
+}
+
+// BulkCreate accepts a BulkCreateOpts struct and creates a new network using the values
+// provided. You must remember to provide a NetworkID value.
+func BulkCreate(c *gophercloud.ServiceClient, opts BulkCreateOpts) (r BulkCreateResult) {
+	b, err := opts.ToBulkPortCreateMap()
+	if err != nil {
+		r.Err = err
+		return
+	}
+
+	resp, err := c.Post(createURL(c), b, &r.Body, nil)
+	_, r.Header, r.Err = gophercloud.ParseResponse(resp, err)
+	return
+}
+
 // Create accepts a CreateOpts struct and creates a new network using the values
 // provided. You must remember to provide a NetworkID value.
 func Create(c *gophercloud.ServiceClient, opts CreateOptsBuilder) (r CreateResult) {
