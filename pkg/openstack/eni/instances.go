@@ -20,9 +20,9 @@ import (
 
 // OpenStackAPI is the API surface used of the ECS API
 type OpenStackAPI interface {
-	GetInstances(ctx context.Context, vpcs ipamTypes.VirtualNetworkMap, subnets ipamTypes.SubnetMap, instanceIDs []string) (*ipamTypes.InstanceMap, error)
+	GetInstances(ctx context.Context, subnets ipamTypes.SubnetMap, instanceIDs []string) (*ipamTypes.InstanceMap, error)
 	GetSubnets(ctx context.Context) (ipamTypes.SubnetMap, error)
-	GetInstance(ctx context.Context, vpcs ipamTypes.VirtualNetworkMap, subnets ipamTypes.SubnetMap, instanceId string) (*ipamTypes.Instance, error)
+	GetInstance(ctx context.Context, subnets ipamTypes.SubnetMap, instanceId string) (*ipamTypes.Instance, error)
 	GetVpcs(ctx context.Context) (ipamTypes.VirtualNetworkMap, error)
 	GetSecurityGroups(ctx context.Context) (types.SecurityGroupMap, error)
 	CreateNetworkInterface(ctx context.Context, subnetID, netID, instanceID string, groups []string, pool ipam.Pool) (string, *eniTypes.ENI, error)
@@ -167,22 +167,6 @@ func (m *InstancesManager) FindSubnetByIDs(vpcID, availabilityZone string, subne
 	return bestSubnet
 }
 
-// FindSecurityGroupByTags returns the security groups matching VPC ID and all required tags
-// The returned security groups slice is immutable so it can be safely accessed
-func (m *InstancesManager) FindSecurityGroupByTags(vpcID string, required ipamTypes.Tags) []*types.SecurityGroup {
-	m.mutex.RLock()
-	defer m.mutex.RUnlock()
-
-	securityGroups := []*types.SecurityGroup{}
-	for _, securityGroup := range m.securityGroups {
-		if securityGroup.Tags.Match(required) {
-			securityGroups = append(securityGroups, securityGroup)
-		}
-	}
-
-	return securityGroups
-}
-
 // DeleteInstance delete instance from m.instances
 func (m *InstancesManager) DeleteInstance(instanceID string) {
 	m.mutex.Lock()
@@ -213,21 +197,9 @@ func (m *InstancesManager) InstanceSync(ctx context.Context, instanceID string) 
 func (m *InstancesManager) resync(ctx context.Context, instanceID string) time.Time {
 	resyncStart := time.Now()
 
-	vpcs, err := m.api.GetVpcs(ctx)
-	if err != nil {
-		log.WithError(err).Warning("Unable to synchronize VPC list")
-		return time.Time{}
-	}
-
 	subnets, err := m.api.GetSubnets(ctx)
 	if err != nil {
 		log.WithError(err).Warning("Unable to retrieve VPC vSwitches list")
-		return time.Time{}
-	}
-
-	securityGroups, err := m.api.GetSecurityGroups(ctx)
-	if err != nil {
-		log.WithError(err).Warning("Unable to retrieve ECS security group list")
 		return time.Time{}
 	}
 
@@ -238,7 +210,7 @@ func (m *InstancesManager) resync(ctx context.Context, instanceID string) time.T
 		m.mutex.Lock()
 		instanceIds := m.getInstanceIdLocked()
 		m.mutex.Unlock()
-		instances, err := m.api.GetInstances(ctx, vpcs, subnets, instanceIds)
+		instances, err := m.api.GetInstances(ctx, subnets, instanceIds)
 		if err != nil {
 			log.WithError(err).Warning("Unable to synchronize ECS interface list")
 			return time.Time{}
@@ -246,16 +218,14 @@ func (m *InstancesManager) resync(ctx context.Context, instanceID string) time.T
 
 		log.WithFields(logrus.Fields{
 			"numInstances":      instances.NumInstances(),
-			"numVPCs":           len(vpcs),
 			"numSubnets":        len(subnets),
-			"numSecurityGroups": len(securityGroups),
 		}).Info("Synchronized OpenStack ENI information")
 
 		m.mutex.Lock()
 		defer m.mutex.Unlock()
 		m.instances = instances
 	} else {
-		instance, err := m.api.GetInstance(ctx, vpcs, subnets, instanceID)
+		instance, err := m.api.GetInstance(ctx, subnets, instanceID)
 		if err != nil {
 			log.WithError(err).Warning("Unable to synchronize openstack interface list")
 			return time.Time{}
@@ -263,9 +233,7 @@ func (m *InstancesManager) resync(ctx context.Context, instanceID string) time.T
 
 		log.WithFields(logrus.Fields{
 			"instance":          instanceID,
-			"numVPCs":           len(vpcs),
 			"numSubnets":        len(subnets),
-			"numSecurityGroups": len(securityGroups),
 		}).Info("Synchronized ENI information for the corresponding instance")
 
 		m.mutex.Lock()
@@ -278,8 +246,6 @@ func (m *InstancesManager) resync(ctx context.Context, instanceID string) time.T
 	}
 
 	m.subnets = subnets
-	m.vpcs = vpcs
-	m.securityGroups = securityGroups
 
 	return resyncStart
 }

@@ -244,6 +244,9 @@ const (
 	// OpenStackDefaultSubnetID allows user to specific subnet for default pool
 	OpenStackDefaultSubnetID = "openstack-default-subnet-id"
 
+	// OpenStackSecurityGroupIDs allows user to specific security group pools
+	OpenStackSecurityGroupIDs = "openstack-security-group-ids"
+
 	// OpenStackProjectID allows user to specific project
 	OpenStackProjectID = "openstack-project-id"
 
@@ -544,6 +547,9 @@ type OperatorConfig struct {
 	// OpenStack allow user to specific subnet for default pool
 	OpenStackDefaultSubnetID string
 
+	// OpenStack allow user to specific security group pools
+	OpenStackSecurityGroupIDs string
+
 	// OpenStack allow user to specific project
 	OpenStackProjectID string
 
@@ -754,6 +760,7 @@ func (c *OperatorConfig) Populate(vp *viper.Viper) {
 	c.OpenStackProjectID = vp.GetString(OpenStackProjectID)
 	c.OpenStackReleaseExcessIPs = vp.GetBool(OpenStackReleaseExcessIPs)
 	c.OpenStackDefaultSubnetID = vp.GetString(OpenStackDefaultSubnetID)
+	c.OpenStackSecurityGroupIDs = vp.GetString(OpenStackSecurityGroupIDs)
 	c.OpenStackHttpTimeout = vp.GetInt(OpenStackHttpTimeout)
 	c.OpenStackMaxNics = vp.GetInt(OpenStackMaxNics)
 	c.OpenStackMaxV4PodIPs = vp.GetInt(OpenStackMaxV4PodIPs)

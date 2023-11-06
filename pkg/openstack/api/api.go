@@ -42,6 +42,7 @@ const (
 	NetworkID = "network_id"
 	SubnetID  = "subnet_id"
 	ProjectID = "project_id"
+	SecurityGroupIDs = "securitygroup_ids"
 
 	VMInterfaceName  = "cilium-vm-port"
 	PodInterfaceName = "cilium-pod-port"
@@ -83,7 +84,7 @@ type PortCreateOpts struct {
 	SubnetID      string
 	IPAddress     string
 	ProjectID     string
-	SecurityGroup []string
+	SecurityGroups *[]string
 	DeviceID      string
 	DeviceOwner   string
 	Tags          string
@@ -205,7 +206,7 @@ func newIdentityV3ClientOrDie(p *gophercloud.ProviderClient) (*gophercloud.Servi
 // instanceMap
 func (c *Client) GetInstances(ctx context.Context, vpcs ipamTypes.VirtualNetworkMap, subnets ipamTypes.SubnetMap, instanceIDs []string) (*ipamTypes.InstanceMap, error) {
 	instances := ipamTypes.NewInstanceMap()
-	log.Errorf("######## Do Get instances")
+	log.Debug("######## Do Get instances")
 	for _, instanceId := range instanceIDs {
 		instance, err := c.GetInstance(ctx, vpcs, subnets, instanceId)
 		if err != nil {
@@ -218,8 +219,7 @@ func (c *Client) GetInstances(ctx context.Context, vpcs ipamTypes.VirtualNetwork
 }
 
 func (c *Client) GetInstance(ctx context.Context, vpcs ipamTypes.VirtualNetworkMap, subnets ipamTypes.SubnetMap, instanceID string) (instance *ipamTypes.Instance, err error) {
-	log.Errorf("######## Do Get instance, id is %s", instanceID)
-
+	log.Debug("######## Do Get instance: %s ports", instanceID)
 	instance = &ipamTypes.Instance{}
 	instance.Interfaces = map[string]ipamTypes.InterfaceRevision{}
 	var networkInterfaces []ports.Port
@@ -269,7 +269,7 @@ func (c *Client) GetVpcs(ctx context.Context) (ipamTypes.VirtualNetworkMap, erro
 // GetSubnets returns all subnets as a subnetMap
 func (c *Client) GetSubnets(ctx context.Context) (ipamTypes.SubnetMap, error) {
 	subnets := ipamTypes.SubnetMap{}
-	log.Errorf("######## Do Get subnets")
+	log.Debug("######## Do Get subnets")
 	subnetList, err := c.describeSubnets()
 	if err != nil {
 		return nil, err
@@ -320,6 +320,7 @@ func (c *Client) GetSecurityGroups(ctx context.Context) (types.SecurityGroupMap,
 func (c *Client) CreateNetworkInterface(ctx context.Context, subnetID, netID, instanceID string, groups []string, pool ipam.Pool) (string, *eniTypes.ENI, error) {
 	log.Errorf("######## Do create interface subnetid is: %s, networkid is: %s", subnetID, netID)
 
+
 	opt := PortCreateOpts{
 		Name:        fmt.Sprintf(VMInterfaceName+"-%s-%s", pool, randomString(10)),
 		NetworkID:   netID,
@@ -327,6 +328,13 @@ func (c *Client) CreateNetworkInterface(ctx context.Context, subnetID, netID, in
 		DeviceOwner: fmt.Sprintf(VMDeviceOwner+"%s", instanceID),
 		ProjectID:   c.filters[ProjectID],
 	}
+
+	// use specified sgs to create vm nics
+	if c.filters[SecurityGroupIDs] != ""{
+		sgs := strings.Split(strings.ReplaceAll(c.filters[SecurityGroupIDs], " ", ""),",")
+		opt.SecurityGroups = &sgs
+	}
+
 	eni, err := c.createPort(opt)
 	if err != nil {
 		return "", nil, err
@@ -586,6 +594,7 @@ func (c *Client) createPort(opt PortCreateOpts) (*eniTypes.ENI, error) {
 		DeviceOwner: opt.DeviceOwner,
 		DeviceID:    opt.DeviceID,
 		ProjectID:   opt.ProjectID,
+		SecurityGroups: opt.SecurityGroups,
 		FixedIPs: FixedIPOpts{
 			{
 				SubnetID:  opt.SubnetID,

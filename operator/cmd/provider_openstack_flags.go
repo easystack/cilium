@@ -19,6 +19,8 @@ func init() {
 	option.BindEnv(Vp, operatorOption.OpenStackReleaseExcessIPs)
 	flags.String(operatorOption.OpenStackDefaultSubnetID, "", "Specific subnet ID for OpenStack to create default pool")
 	option.BindEnv(Vp, operatorOption.OpenStackDefaultSubnetID)
+	flags.String(operatorOption.OpenStackSecurityGroupIDs, "", "Specific security groups for OpenStack pools")
+	option.BindEnv(Vp, operatorOption.OpenStackSecurityGroupIDs)
 	flags.Int(operatorOption.OpenStackHttpTimeout, 60, "OpenStack client http timeout")
 	option.BindEnv(Vp, operatorOption.OpenStackHttpTimeout)
 	flags.Int(operatorOption.OpenStackMaxNics, 6, "Max number of nics on one vm")
