@@ -6,7 +6,6 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"github.com/cilium/cilium/pkg/ipam/staticip"
 	"os"
 	"path"
 	"path/filepath"
@@ -14,6 +13,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/cilium/cilium/pkg/ipam/ciliumpodippoolmonitor"
+	"github.com/cilium/cilium/pkg/ipam/staticip"
 
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/asm"
@@ -1593,35 +1595,36 @@ var daemonCell = cell.Module(
 type daemonParams struct {
 	cell.In
 
-	Lifecycle            hive.Lifecycle
-	Clientset            k8sClient.Clientset
-	Datapath             datapath.Datapath
-	WGAgent              *wireguard.Agent `optional:"true"`
-	LocalNodeStore       *node.LocalNodeStore
-	BGPController        *bgpv1.Controller
-	Shutdowner           hive.Shutdowner
-	Resources            agentK8s.Resources
-	CacheStatus          k8s.CacheStatus
-	NodeManager          nodeManager.NodeManager
-	EndpointManager      endpointmanager.EndpointManager
-	CertManager          certificatemanager.CertificateManager
-	SecretManager        certificatemanager.SecretManager
-	IdentityAllocator    CachingIdentityAllocator
-	Policy               *policy.Repository
-	PolicyUpdater        *policy.Updater
-	IPCache              *ipcache.IPCache
-	EgressGatewayManager *egressgateway.Manager
-	IPAMMetadataManager  *ipamMetadata.Manager
-	StaticIPManager      *staticip.Manager
-	CNIConfigManager     cni.CNIConfigManager
-	SwaggerSpec          *server.Spec
-	HealthAPISpec        *healthApi.Spec
-	ServiceCache         *k8s.ServiceCache
-	ClusterMesh          *clustermesh.ClusterMesh
-	MonitorAgent         monitorAgent.Agent
-	L2Announcer          *l2announcer.L2Announcer
-	L7Proxy              *proxy.Proxy
-	DB                   statedb.DB
+	Lifecycle              hive.Lifecycle
+	Clientset              k8sClient.Clientset
+	Datapath               datapath.Datapath
+	WGAgent                *wireguard.Agent `optional:"true"`
+	LocalNodeStore         *node.LocalNodeStore
+	BGPController          *bgpv1.Controller
+	Shutdowner             hive.Shutdowner
+	Resources              agentK8s.Resources
+	CacheStatus            k8s.CacheStatus
+	NodeManager            nodeManager.NodeManager
+	EndpointManager        endpointmanager.EndpointManager
+	CertManager            certificatemanager.CertificateManager
+	SecretManager          certificatemanager.SecretManager
+	IdentityAllocator      CachingIdentityAllocator
+	Policy                 *policy.Repository
+	PolicyUpdater          *policy.Updater
+	IPCache                *ipcache.IPCache
+	EgressGatewayManager   *egressgateway.Manager
+	IPAMMetadataManager    *ipamMetadata.Manager
+	StaticIPManager        *staticip.Manager
+	CiliumPodIPPoolMonitor *ciliumpodippoolmonitor.CiliumPodIPPoolMonitor
+	CNIConfigManager       cni.CNIConfigManager
+	SwaggerSpec            *server.Spec
+	HealthAPISpec          *healthApi.Spec
+	ServiceCache           *k8s.ServiceCache
+	ClusterMesh            *clustermesh.ClusterMesh
+	MonitorAgent           monitorAgent.Agent
+	L2Announcer            *l2announcer.L2Announcer
+	L7Proxy                *proxy.Proxy
+	DB                     statedb.DB
 }
 
 func newDaemonPromise(params daemonParams) promise.Promise[*Daemon] {
