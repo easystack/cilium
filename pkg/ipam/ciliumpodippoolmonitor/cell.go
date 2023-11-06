@@ -6,6 +6,7 @@ package ciliumpodippoolmonitor
 import (
 	"github.com/cilium/cilium/pkg/hive"
 	"github.com/cilium/cilium/pkg/hive/cell"
+	ipamOption "github.com/cilium/cilium/pkg/ipam/option"
 	"github.com/cilium/cilium/pkg/k8s/client"
 	"github.com/cilium/cilium/pkg/option"
 )
@@ -26,7 +27,8 @@ type managerParams struct {
 }
 
 func newCiliumPodIPoolMonitor(params managerParams) *CiliumPodIPPoolMonitor {
-	if params.DaemonConfig.EnableHostLegacyRouting {
+	if params.DaemonConfig.EnableHostLegacyRouting &&
+		params.DaemonConfig.IPAM == ipamOption.IPAMOpenStack {
 		monitor := &CiliumPodIPPoolMonitor{
 			CiliumPodIPPoolInterface: params.Clientset.CiliumV2alpha1(),
 			CiliumNodeInterface:      params.Clientset.CiliumV2().CiliumNodes(),

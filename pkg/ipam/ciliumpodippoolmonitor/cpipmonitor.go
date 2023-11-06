@@ -51,6 +51,14 @@ type eniInfo4Route struct {
 	ruleTableID int
 }
 
+type routeOperationInfo struct {
+	addedCIDRStr     string
+	addedNetwork     *net.IPNet
+	eniNetMap        map[int]eniInfo4Route
+	existNetwork     *eniInfo4Route
+	defaultRuleTable int
+}
+
 func (m *CiliumPodIPPoolMonitor) Start(ctx hive.HookContext) (err error) {
 	ciliumNodeInterface = m.CiliumNodeInterface
 	ciliumPodIPPoolStore, ciliumPodIPPoolController = informer.NewInformer(
@@ -79,48 +87,125 @@ func (m *CiliumPodIPPoolMonitor) Stop(ctx hive.HookContext) error {
 }
 
 func onAdd(obj interface{}) {
-	routeChange(obj)
+	routeChange(obj, "PoolAdd")
 }
 
 func onUpdate(oldObj, newObj interface{}) {
 	//oldCiliumPodIPPool := oldObj.(*v2alpha1.CiliumPodIPPoolList)
 	//newCiliumPodIPPool := newObj.(*v2alpha1.CiliumPodIPPoolList)
-	routeChange(newObj)
+	routeChange(newObj, "PoolUpdate")
 
 }
 
 func onDelete(obj interface{}) {
-
-}
-
-func routeChange(obj interface{}) {
+	var operationInfo *routeOperationInfo
 	var err error
-	// Observed a panic:
-	//&runtime.TypeAssertionError{_interface:(*runtime._type)(0x2f62780), concrete:(*runtime._type)(0x35a69c0), asserted:(*runtime._type)(0x34888a0), missingMethod:""}
-	// (interface conversion: interface {} is *v2alpha1.CiliumPodIPPool, not *v2alpha1.CiliumPodIPPoolList)
-	ciliumPodIPPool := obj.(*v2alpha1.CiliumPodIPPool)
-	//log.Errorf("#######ciliumPodIPPool#1###%v", ciliumPodIPPool.Spec.CIDR)
-	cidrStr := ciliumPodIPPool.Spec.CIDR
-	//log.Errorf("#######ciliumPodIPPool####%v+", ciliumPodIPPool.Spec.IPv4.CIDRs) // nil pointer dereference
-	//log.Errorf("#######ciliumPodIPPool####%v", ciliumPodIPPool.Spec.IPv4.MaskSize) // nil pointer dereferenc
-	// event add may have not cidrStr for updating fill
-	var newNetworkInfo *net.IPNet
-	if _, newNetworkInfo, err = net.ParseCIDR(cidrStr); err != nil {
-		log.Errorf("unable to parse cidrStr[%v]: %s", cidrStr, err)
+
+	if operationInfo, err = getInfo4RouteConf(obj); err != nil {
+		log.Errorf("Can not process Delete Operation: %s", err)
 		return
 	}
 
-	//log.Errorf("#######ciliumPodIPPool#ip###%v", ip)             // 192.168.80.0
-	//log.Errorf("#######ciliumPodIPPool#net.IP###%v", newNetworkInfo.IP)     // 192.168.80.0
-	//log.Errorf("#######ciliumPodIPPool#net.Mask###%v", newNetworkInfo.Mask) // ffffff00
-	// route table<--tableID<-- enitag
-	//ruleList, _ := netlink.RuleList(netlink.FAMILY_V4)
+	for _, eniInfo := range operationInfo.eniNetMap {
+		// add route rule across
+		//ifindex, err := retrieveIfIndexFromMAC(net.ParseMAC(eni.MAC), mtu)
+		// ip route add ........ table tableid
+		if operationInfo.addedCIDRStr != eniInfo.strNetwork {
+			infIndex, _ := linuxrouting.RetrieveIfaceIndexFromMAC(eniInfo.intfMac)
+			netlink.RouteDel(&netlink.Route{
+				LinkIndex: infIndex,
+				Dst:       operationInfo.addedNetwork,
+				Table:     eniInfo.ruleTableID,
+				Protocol:  linux_defaults.RTProto,
+			})
+		}
+	}
+	// delete all entry in this table
+	if operationInfo.existNetwork != nil {
+		route.DeleteRouteTable(operationInfo.existNetwork.ruleTableID, netlink.FAMILY_V4)
+	}
+
+	// ip rule del from all to 192.168.80.0/24 lookup [11] priority 300 // ingress using default table
+	defaultRouteTable := operationInfo.defaultRuleTable
+	if err := route.DeleteRule(netlink.FAMILY_V4, route.Rule{
+		//Priority: linux_defaults.RulePriorityIngress,
+		Priority: linux_defaults.RulePriorityLegacyHostRoutingCase,
+		To:       operationInfo.addedNetwork,
+		Table:    defaultRouteTable,
+		Protocol: linux_defaults.RTProto,
+	}); err != nil {
+		log.Errorf("unable to install ip rule: %s", err)
+	}
+
+}
+
+func routeChange(obj interface{}, operation string) {
+	var operationInfo *routeOperationInfo
+	var err error
+
+	if operationInfo, err = getInfo4RouteConf(obj); err != nil {
+		log.Errorf("Can not process %s Operation: %s", operation, err)
+		return
+	}
+
+	for _, eniInfo := range operationInfo.eniNetMap {
+		//ifindex, err := retrieveIfIndexFromMAC(net.ParseMAC(eni.MAC), mtu)
+		// ip route add ........ table tableid [add route rule across]
+		if operationInfo.addedCIDRStr != eniInfo.strNetwork {
+			infIndex, _ := linuxrouting.RetrieveIfaceIndexFromMAC(eniInfo.intfMac)
+			netlink.RouteReplace(&netlink.Route{
+				LinkIndex: infIndex,
+				Dst:       operationInfo.addedNetwork,
+				Table:     eniInfo.ruleTableID,
+				Protocol:  linux_defaults.RTProto,
+			})
+
+			existedNetwork := operationInfo.existNetwork
+			if existedNetwork != nil {
+				infIndex, _ = linuxrouting.RetrieveIfaceIndexFromMAC(existedNetwork.intfMac)
+				_, network, _ := net.ParseCIDR(eniInfo.strNetwork)
+				netlink.RouteReplace(&netlink.Route{
+					LinkIndex: infIndex,
+					Dst:       network,
+					Table:     existedNetwork.ruleTableID,
+					Protocol:  linux_defaults.RTProto,
+				})
+			}
+		}
+	}
+	// ip rule add from all to 192.168.80.0/24 lookup [11] priority 300 // ingress using default table
+	defaultRouteTable := operationInfo.defaultRuleTable
+	if err := route.ReplaceRule(route.Rule{
+		//Priority: linux_defaults.RulePriorityIngress,
+		Priority: linux_defaults.RulePriorityLegacyHostRoutingCase,
+		To:       operationInfo.addedNetwork,
+		Table:    defaultRouteTable,
+		Protocol: linux_defaults.RTProto,
+	}); err != nil {
+		log.Errorf("unable to install ip rule: %s", err)
+	}
+}
+
+func getInfo4RouteConf(obj interface{}) (*routeOperationInfo, error) {
+	var err error
+
+	ciliumPodIPPool := obj.(*v2alpha1.CiliumPodIPPool)
+	routeOperation := &routeOperationInfo{}
+	routeOperation.addedCIDRStr = ciliumPodIPPool.Spec.CIDR
+	cidrStr := routeOperation.addedCIDRStr
+	// create -> unuse -> delete : for add
+	// create -> used: for update
+	if _, routeOperation.addedNetwork, err = net.ParseCIDR(cidrStr); err != nil {
+		log.Errorf("unable to parse cidrStr[%v]: %s", cidrStr, err)
+		return nil, err
+	}
+
+	// kubecte get cn node-x -oyaml
 	nodeName := os.Getenv("K8S_NODE_NAME")
-	// kubectl get cn, get tableID
 	var ciliumNodeContent *v2.CiliumNode
 	if ciliumNodeContent, err = ciliumNodeInterface.Get(context.TODO(), nodeName, meta_v1.GetOptions{}); err != nil {
 		log.Errorf("Get CiliumNode conetent fail: %s", err)
-		return
+		return nil, err
 	}
 	enis := ciliumNodeContent.Status.OpenStack.ENIs
 	intfNums := []int{}
@@ -131,52 +216,16 @@ func routeChange(obj interface{}) {
 			einfo := eniInfo4Route{strNetwork: eni.Subnet.CIDR, intfMac: eni.MAC, ruleTableID: intfNum + linux_defaults.RouteTableInterfacesOffset}
 			eniNetMap[intfNum] = einfo
 			intfNums = append(intfNums, intfNum)
-		}
-	}
 
-	var reverseNetwork *eniInfo4Route = nil
-	for _, eniInfo := range eniNetMap {
-		//log.Errorf("### tags #########%v:%v:mac:%v", eni+10, eniInfo.strNetwork, eniInfo.intfMac)
-		//eg. 171      142,168,113,17
-		if cidrStr == eniInfo.strNetwork {
-			reverseNetwork = &eniInfo
-		}
-	}
-
-	for _, eniInfo := range eniNetMap {
-		// add route rule across
-		//ifindex, err := retrieveIfIndexFromMAC(net.ParseMAC(eni.MAC), mtu)
-		// ip route add ........ table tableid
-		if cidrStr != eniInfo.strNetwork {
-			infIndex, _ := linuxrouting.RetriveInIndexFromMac(eniInfo.intfMac)
-			netlink.RouteReplace(&netlink.Route{
-				LinkIndex: infIndex,
-				Dst:       newNetworkInfo,
-				Table:     eniInfo.ruleTableID,
-				Protocol:  linux_defaults.RTProto,
-			})
-
-			if reverseNetwork != nil {
-				infIndex, _ = linuxrouting.RetriveInIndexFromMac(reverseNetwork.intfMac)
-				_, network, _ := net.ParseCIDR(reverseNetwork.strNetwork)
-				netlink.RouteReplace(&netlink.Route{
-					LinkIndex: infIndex,
-					Dst:       network,
-					Table:     reverseNetwork.ruleTableID,
-					Protocol:  linux_defaults.RTProto,
-				})
+			if cidrStr == eni.Subnet.CIDR {
+				//eg. 171      142,168,113,17
+				routeOperation.existNetwork = &einfo
 			}
 		}
 	}
-	// ip rule add from all to 192.168.80.0/24 lookup [11] priority 300 // ingress using default table
 	sort.Ints(intfNums)
-	if err := route.ReplaceRule(route.Rule{
-		//Priority: linux_defaults.RulePriorityIngress,
-		Priority: linux_defaults.RulePriorityLegacyHostRoutingCase,
-		To:       newNetworkInfo,
-		Table:    eniNetMap[intfNums[0]].ruleTableID,
-		Protocol: linux_defaults.RTProto,
-	}); err != nil {
-		log.Errorf("unable to install ip rule: %s", err)
-	}
+	routeOperation.defaultRuleTable = intfNums[0]
+	routeOperation.eniNetMap = eniNetMap
+
+	return routeOperation, err
 }

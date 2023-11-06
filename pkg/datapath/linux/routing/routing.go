@@ -427,6 +427,17 @@ func RetrieveIfaceNameFromMAC(mac string) (string, error) {
 	return iface.Attrs().Name, nil
 }
 
+// RetrieveIfaceIndexFromMAC finds the corresponding device name for a
+// given MAC address.
+func RetrieveIfaceIndexFromMAC(mac string) (int, error) {
+	iface, err := retrieveIfaceFromMAC(mac)
+	if err != nil {
+		err = fmt.Errorf("failed to get iface name with MAC %w", err)
+		return -1, err
+	}
+	return iface.Attrs().Index, nil
+}
+
 func deleteRule(r route.Rule) error {
 	rules, err := route.ListRules(netlink.FAMILY_V4, &r)
 	if err != nil {
@@ -450,31 +461,6 @@ func deleteRule(r route.Rule) error {
 	}).Warning("No rule matching found")
 
 	return errors.New("no rule found to delete")
-}
-
-func RetriveInIndexFromMac(mac string) (int, error) {
-	var link netlink.Link
-
-	links, err := netlink.LinkList()
-	if err != nil {
-		return -1, fmt.Errorf("unable to list interfaces: %w", err)
-	}
-
-	for _, l := range links {
-		// Linux slave devices have the same MAC address as their master
-		// device, but we want the master device.
-		if l.Attrs().RawFlags&unix.IFF_SLAVE != 0 {
-			continue
-		}
-		if l.Attrs().HardwareAddr.String() == mac {
-			if link != nil {
-				return -1, fmt.Errorf("several interfaces found with MAC %s: %s and %s", mac, link.Attrs().Name, l.Attrs().Name)
-			}
-			link = l
-			break
-		}
-	}
-	return link.Attrs().Index, nil
 }
 
 // retrieveIfIndexFromMAC finds the corresponding device index (ifindex) for a
