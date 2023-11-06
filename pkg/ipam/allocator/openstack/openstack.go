@@ -41,6 +41,7 @@ func (a *AllocatorOpenStack) Init(ctx context.Context) error {
 	var err error
 
 	projectID := operatorOption.Config.OpenStackProjectID
+	securityGroupIDs := operatorOption.Config.OpenStackSecurityGroupIDs
 	timeout := operatorOption.Config.OpenStackHttpTimeout
 
 	limits.Update(map[string]ipamTypes.Limits{
@@ -52,7 +53,7 @@ func (a *AllocatorOpenStack) Init(ctx context.Context) error {
 	})
 
 	a.client, err = api.NewClient(aMetrics, operatorOption.Config.IPAMAPIQPSLimit, operatorOption.Config.IPAMAPIBurst,
-		map[string]string{api.ProjectID: projectID}, timeout)
+		map[string]string{api.ProjectID: projectID, api.SecurityGroupIDs: securityGroupIDs}, timeout)
 
 	if err != nil {
 		log.Errorf("Failed to init openstack client with error: %s", err)
