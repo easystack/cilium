@@ -368,7 +368,7 @@ func (p *crdPool) recalculate(allocate ipamTypes.AllocationMap, stats ipamStats.
 
 	p.stats.AvailableIPs = len(p.available)
 	if p.status == Active || p.status == WaitingForAllocate {
-		p.stats.NeededIPs = calculateNeededIPs(p.stats.AvailableIPs, p.stats.UsedIPs, p.getPreAllocate(), p.getMinAllocate(), maxAllocate)
+		p.stats.NeededIPs = calculateNeededIPs(p.stats.AvailableIPs, p.stats.UsedIPs, p.getPreAllocate(), p.getMinAllocate(), maxAllocate, p.getMaxAboveWatermark())
 	} else {
 		p.stats.NeededIPs = 0
 	}
