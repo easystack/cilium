@@ -42,6 +42,9 @@ type RoutingInfo struct {
 
 	// IpamMode tells us which IPAM mode is being used (e.g., ENI, AKS).
 	IpamMode string
+
+	// for Legacy Host Routing, we need primary interface direct roting interface
+	PrimaryIntfName string
 }
 
 func (info *RoutingInfo) GetIPv4CIDRs() []net.IPNet {
