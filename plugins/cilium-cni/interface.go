@@ -56,11 +56,23 @@ func interfaceAdd(ipConfig *current.IPConfig, ipam *models.IPAMAddressResponse, 
 		return fmt.Errorf("unable to parse routing info: %v", err)
 	}
 
-	if err := routingInfo.Configure(
-		ipConfig.Address.IP,
-		int(conf.DeviceMTU),
-		conf.EgressMultiHomeIPRuleCompat,
-	); err != nil {
+	var routeConfErr error
+	if conf.DaemonConfigurationMap["EnableHostLegacyRouting"].(bool) {
+		routingInfo.PrimaryIntfName = conf.DaemonConfigurationMap["DirectRoutingDevice"].(string)
+		routeConfErr = routingInfo.ConfigureForLegacy(
+			ipConfig.Address.IP,
+			int(conf.DeviceMTU),
+			conf.EgressMultiHomeIPRuleCompat,
+		)
+	} else {
+		routeConfErr = routingInfo.Configure(
+			ipConfig.Address.IP,
+			int(conf.DeviceMTU),
+			conf.EgressMultiHomeIPRuleCompat,
+		)
+	}
+
+	if routeConfErr != nil {
 		return fmt.Errorf("unable to install ip rules and routes: %s", err)
 	}
 
