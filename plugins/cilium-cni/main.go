@@ -451,6 +451,9 @@ func cmdAdd(args *skel.CmdArgs) (err error) {
 		ipam, releaseIPsFunc, err = allocateIPsWithDelegatedPlugin(context.TODO(), conf, n, args.StdinData)
 	} else {
 		ipam, releaseIPsFunc, err = allocateIPsWithCiliumAgent(c, cniArgs)
+		//log.Errorf("=conf=====<%+v>==", conf.Addressing.IPV4)
+		//log.Errorf("=ipam====ipam.Address=<%+v>", ipam.Address)
+		//log.Errorf("=ipam====ipam.HostAddressing.IPV4=<%+v>", ipam.HostAddressing.IPV4) // cilium_host
 	}
 
 	// release addresses on failure
@@ -565,7 +568,7 @@ func cmdAdd(args *skel.CmdArgs) (err error) {
 
 	switch conf.IpamMode {
 	case ipamOption.IPAMENI, ipamOption.IPAMAzure, ipamOption.IPAMAlibabaCloud, ipamOption.IPAMOpenStack:
-		logger.Errorf("################## interface Add, ipConfig is %+v, ipam.V4 is %+v", ipConfig, ipam.IPV4)
+		logger.Errorf("################## interface Add, ipConfig is %+v, ipam.IPV4 is %+v", ipConfig, ipam.IPV4)
 		err = interfaceAdd(ipConfig, ipam.IPV4, conf)
 		if err != nil {
 			return fmt.Errorf("unable to setup interface datapath: %s", err)
@@ -579,6 +582,7 @@ func cmdAdd(args *skel.CmdArgs) (err error) {
 				logger.WithError(err).Warn("unable to enable ipv6 on all interfaces")
 			}
 		}
+		//log.Errorf("=state=====%+v,<%+v>", state, state.HostAddr.IPV4)
 		macAddrStr, err = configureIface(ipam, args.IfName, &state)
 		return err
 	}); err != nil {

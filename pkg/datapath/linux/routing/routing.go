@@ -135,6 +135,153 @@ func (info *RoutingInfo) Configure(ip net.IP, mtu int, compat bool) error {
 	return nil
 }
 
+// In HostLegacyRouting, avoid rp_filter check
+func (info *RoutingInfo) ConfigureForLegacy(ip net.IP, mtu int, compat bool) error {
+	log.Errorf("############## RoutingInfo is %+v", info)
+	if ip.To4() == nil {
+		log.WithFields(logrus.Fields{
+			"endpointIP": ip,
+		}).Warning("Unable to configure rules and routes because IP is not an IPv4 address")
+		return errors.New("IP not compatible")
+	}
+
+	ifindex, err := retrieveIfIndexFromMAC(info.MasterIfMAC, mtu)
+	//ifindex := ifLink.Attrs().Index
+	if err != nil {
+		return fmt.Errorf("unable to find ifindex for interface MAC: %s", err)
+	}
+
+	ipWithMask := net.IPNet{
+		IP:   ip,
+		Mask: net.CIDRMask(32, 32),
+	}
+
+	log.Errorf("############## ip is %+v, ifindex is %d", ip, ifindex)
+	// On ingress, route all traffic to the endpoint IP via the main routing
+	// table. Egress rules are created in a per-ENI routing table.
+	if err := route.ReplaceRule(route.Rule{
+		Priority: linux_defaults.RulePriorityIngress,
+		To:       &ipWithMask,
+		Table:    route.MainTable,
+		Protocol: linux_defaults.RTProto,
+	}); err != nil {
+		return fmt.Errorf("unable to install ip rule: %s", err)
+	}
+
+	var egressPriority, tableID int
+	if compat {
+		egressPriority = linux_defaults.RulePriorityEgress
+		tableID = ifindex
+	} else {
+		egressPriority = linux_defaults.RulePriorityEgressv2
+		tableID = computeTableIDFromIfaceNumber(info.InterfaceNumber)
+	}
+
+	log.Errorf("############## tableID is %d, priority is %d, From is %+v", tableID, egressPriority, ipWithMask)
+
+	// The condition here should mirror the condition in Delete.
+	if info.Masquerade && info.IpamMode == ipamOption.IPAMENI {
+		// Lookup a VPC specific table for all traffic from an endpoint to the
+		// CIDR configured for the VPC on which the endpoint has the IP on.
+		for _, cidr := range info.IPv4CIDRs {
+			if err := route.ReplaceRule(route.Rule{
+				Priority: egressPriority,
+				From:     &ipWithMask,
+				To:       &cidr,
+				Table:    tableID,
+				Protocol: linux_defaults.RTProto,
+			}); err != nil {
+				return fmt.Errorf("unable to install ip rule: %s", err)
+			}
+		}
+	} else {
+		// Lookup a VPC specific table for all traffic from an endpoint. for new pod, this is needed
+		if err := route.ReplaceRule(route.Rule{
+			Priority: egressPriority,
+			From:     &ipWithMask,
+			Table:    tableID,
+			Protocol: linux_defaults.RTProto,
+		}); err != nil {
+			return fmt.Errorf("unable to install ip rule: %s", err)
+		}
+	}
+	// Get control plane interface default route rule
+	// BEGIN:
+	primaryLink, _ := netlink.LinkByName(info.PrimaryIntfName)
+	primaryRoutelist, _ := netlink.RouteList(primaryLink, netlink.FAMILY_V4)
+	var primaryDefaultRoute netlink.Route
+	for _, r := range primaryRoutelist {
+		if r.Dst.IP.Equal(net.IPv4zero) {
+			primaryDefaultRoute.Gw = r.Gw
+			break
+		}
+	}
+	// Get control plane ip/network for cidr filtering
+	primaryAddrs, _ := netlink.AddrList(primaryLink, netlink.FAMILY_V4)
+	primaryAddr := primaryAddrs[0]
+	primaryAddrIp := primaryAddr.IP
+	primaryNetwork := primaryAddrIp.Mask(primaryAddr.Mask)
+	//log.Errorf("#### primary interface ip:%v", primaryAddrIp)     // 192.168.0.153
+	//log.Errorf("#### primary interface mask:%v", primaryAddr.Mask) // ffffff00
+	//log.Errorf("#### primary interface mask:%v", primaryNetwork) // 192.168.0.0
+	// 6 is max subnet account
+	routeCIDRs := make([]net.IPNet, 0, 6)
+	//log.Errorf("######## Summary add route:%+v", info.IPv4CIDRs)
+	for _, cidr := range info.IPv4CIDRs {
+		//log.Errorf("##>>>>###%s", string(cidr.Mask))
+		if cidr.IP.Equal(primaryNetwork) &&
+			cidr.Mask.String() == primaryAddr.Mask.String() {
+			continue
+		}
+		routeCIDRs = append(routeCIDRs, cidr)
+	}
+	// END
+	log.Errorf("############## Add tree routes ifindex is %d, tableID is %d, info is %+v", ifindex, tableID, info)
+	// Nexthop route to the VPC or subnet gateway
+	//
+	// Note: This is a /32 route to avoid any L2. The endpoint does no L2
+	// either. [do not monify]
+	if err := netlink.RouteReplace(&netlink.Route{
+		LinkIndex: ifindex,
+		Dst:       &net.IPNet{IP: info.IPv4Gateway, Mask: net.CIDRMask(32, 32)},
+		Scope:     netlink.SCOPE_LINK,
+		Table:     tableID,
+		Protocol:  linux_defaults.RTProto,
+	}); err != nil {
+		return fmt.Errorf("unable to add L2 nexthop route: %s", err)
+	}
+	// Default route with control plane interface
+	if err := netlink.RouteReplace(&netlink.Route{
+		LinkIndex: primaryLink.Attrs().Index,
+		Dst:       &net.IPNet{IP: net.IPv4zero, Mask: net.CIDRMask(0, 32)},
+		Table:     tableID,
+		//Gw:       info.IPv4Gateway,
+		Gw:       primaryDefaultRoute.Gw,
+		Protocol: linux_defaults.RTProto,
+	}); err != nil {
+		return fmt.Errorf("unable to add L2 nexthop route: %s", err)
+	}
+	//log.Errorf("#####primaryDefaultRoute.LinkIndex##%+v, ", primaryDefaultRoute.LinkIndex)
+	//log.Errorf("#####primaryLink##%+v", primaryLink.Attrs().Index)
+	//log.Errorf("#######%v, ", primaryDefaultRoute.Gw)
+	// ip route add [self subnet cidr] via self-info.IPv4Gateway [dev ensxx] table tableID
+	// log.Errorf("######## Need add route:%+v", routeCIDRs)
+	for _, cidr := range routeCIDRs {
+		if err := netlink.RouteReplace(&netlink.Route{
+			LinkIndex: ifindex,
+			// IPv4CIDR的第一个ip/mask不一定是self-subnet，所以一定要过滤
+			Dst:      &net.IPNet{IP: cidr.IP, Mask: cidr.Mask},
+			Table:    tableID,
+			Gw:       info.IPv4Gateway,
+			Protocol: linux_defaults.RTProto,
+		}); err != nil {
+			return fmt.Errorf("unable to add L2 nexthop route: %s", err)
+		}
+	}
+
+	return nil
+}
+
 // Delete removes the ingress and egress rules that control traffic for
 // endpoints. Note that the routes referenced by the rules are not deleted as
 // they can be reused when another endpoint is created on the same node. The
@@ -303,6 +450,31 @@ func deleteRule(r route.Rule) error {
 	}).Warning("No rule matching found")
 
 	return errors.New("no rule found to delete")
+}
+
+func RetriveInIndexFromMac(mac string) (int, error) {
+	var link netlink.Link
+
+	links, err := netlink.LinkList()
+	if err != nil {
+		return -1, fmt.Errorf("unable to list interfaces: %w", err)
+	}
+
+	for _, l := range links {
+		// Linux slave devices have the same MAC address as their master
+		// device, but we want the master device.
+		if l.Attrs().RawFlags&unix.IFF_SLAVE != 0 {
+			continue
+		}
+		if l.Attrs().HardwareAddr.String() == mac {
+			if link != nil {
+				return -1, fmt.Errorf("several interfaces found with MAC %s: %s and %s", mac, link.Attrs().Name, l.Attrs().Name)
+			}
+			link = l
+			break
+		}
+	}
+	return link.Attrs().Index, nil
 }
 
 // retrieveIfIndexFromMAC finds the corresponding device index (ifindex) for a
