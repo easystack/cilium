@@ -7,11 +7,11 @@ import (
 	"fmt"
 	"net"
 
-	current "github.com/containernetworking/cni/pkg/types/100"
-
 	"github.com/cilium/cilium/api/v1/models"
 	linuxrouting "github.com/cilium/cilium/pkg/datapath/linux/routing"
 	"github.com/cilium/cilium/pkg/ip"
+	agentOption "github.com/cilium/cilium/pkg/option"
+	current "github.com/containernetworking/cni/pkg/types/100"
 )
 
 func interfaceAdd(ipConfig *current.IPConfig, ipam *models.IPAMAddressResponse, conf *models.DaemonConfigurationStatus) error {
@@ -57,7 +57,7 @@ func interfaceAdd(ipConfig *current.IPConfig, ipam *models.IPAMAddressResponse, 
 	}
 
 	var routeConfErr error
-	if !conf.DaemonConfigurationMap["KubeProxyReplacement"].(bool) {
+	if conf.DaemonConfigurationMap["KubeProxyReplacement"].(string) == agentOption.KubeProxyReplacementFalse {
 		routingInfo.PrimaryIntfName = conf.DaemonConfigurationMap["DirectRoutingDevice"].(string)
 		routeConfErr = routingInfo.ConfigureForLegacy(
 			ipConfig.Address.IP,
