@@ -95,7 +95,7 @@ const (
 	RulePriorityEgressv2 = 111
 
 	// default rule pritoriy for HostLegacyRouting in openstack ipam
-	RulePriorityHostRoutingLegacyCase = 300
+	RulePriorityHostLegacyRoutingCase = 300
 
 	// RulePriorityNodeport is the priority of the rule used with AWS ENI to
 	// make sure that lookups for multi-node NodePort traffic are NOT done

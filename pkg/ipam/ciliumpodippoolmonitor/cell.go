@@ -27,7 +27,7 @@ type managerParams struct {
 }
 
 func newCiliumPodIPoolMonitor(params managerParams) *CiliumPodIPPoolMonitor {
-	if params.DaemonConfig.EnableHostLegacyRouting &&
+	if params.DaemonConfig.KubeProxyReplacement == option.KubeProxyReplacementTrue &&
 		params.DaemonConfig.IPAM == ipamOption.IPAMOpenStack {
 		monitor := &CiliumPodIPPoolMonitor{
 			CiliumPodIPPoolInterface: params.Clientset.CiliumV2alpha1(),

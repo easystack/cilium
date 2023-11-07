@@ -130,7 +130,7 @@ func onDelete(obj interface{}) {
 	defaultRouteTable := operationInfo.defaultRuleTable
 	if err := route.DeleteRule(netlink.FAMILY_V4, route.Rule{
 		//Priority: linux_defaults.RulePriorityIngress,
-		Priority: linux_defaults.RulePriorityHostRoutingLegacyCase,
+		Priority: linux_defaults.RulePriorityHostLegacyRoutingCase,
 		To:       operationInfo.addedNetwork,
 		Table:    defaultRouteTable,
 		Protocol: linux_defaults.RTProto,
@@ -178,7 +178,7 @@ func routeChange(obj interface{}, operation string) {
 	defaultRouteTable := operationInfo.defaultRuleTable
 	if err := route.ReplaceRule(route.Rule{
 		//Priority: linux_defaults.RulePriorityIngress,
-		Priority: linux_defaults.RulePriorityHostRoutingLegacyCase,
+		Priority: linux_defaults.RulePriorityHostLegacyRoutingCase,
 		To:       operationInfo.addedNetwork,
 		Table:    defaultRouteTable,
 		Protocol: linux_defaults.RTProto,
@@ -225,7 +225,7 @@ func getInfo4RouteConf(obj interface{}) (*routeOperationInfo, error) {
 		}
 	}
 	sort.Ints(intfNums)
-	routeOperation.defaultRuleTable = intfNums[0]
+	routeOperation.defaultRuleTable = intfNums[0] + linux_defaults.RouteTableInterfacesOffset
 	routeOperation.eniNetMap = eniNetMap
 
 	return routeOperation, err
