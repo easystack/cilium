@@ -88,6 +88,8 @@ spec:
                 - cidrs
                 - maskSize
                 type: object
+              max-free-port:
+                type: integer
               subnet-id:
                 type: string
                 x-kubernetes-validations:
@@ -104,6 +106,8 @@ spec:
             properties:
               active:
                 type: boolean
+              current-free-port:
+                type: integer
               items:
                 additionalProperties:
                   description: ItemSpec describe the status of the node which uses

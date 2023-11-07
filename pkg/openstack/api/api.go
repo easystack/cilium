@@ -7,6 +7,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
+	"math/rand"
+	"net"
+	"net/http"
+	"os"
+	"sort"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
 	"github.com/cilium/cilium/pkg/controller"
 	"github.com/cilium/cilium/pkg/ipam"
 	"github.com/cilium/cilium/pkg/k8s/apis/cilium.io/v2alpha1"
@@ -20,16 +31,6 @@ import (
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/attributestags"
 	"github.com/gophercloud/gophercloud/pagination"
 	"golang.org/x/sync/semaphore"
-	"math"
-	"math/rand"
-	"net"
-	"net/http"
-	"os"
-	"sort"
-	"strconv"
-	"strings"
-	"sync"
-	"time"
 
 	"github.com/cilium/cilium/pkg/cidr"
 	ipamTypes "github.com/cilium/cilium/pkg/ipam/types"
@@ -65,7 +66,9 @@ const (
 
 	FakeAddresses = 100
 
-	MaxCreatePortsInBulk = 100
+	MaxCreatePortsInBulk     = 100
+	DefaultCreatePortsInBulk = 20
+	DefaultMaxCreatePort     = 2048
 )
 
 const (
@@ -316,7 +319,7 @@ func (c *Client) GetInstances(ctx context.Context, subnets ipamTypes.SubnetMap, 
 }
 
 func (c *Client) GetInstance(ctx context.Context, subnets ipamTypes.SubnetMap, instanceID string) (instance *ipamTypes.Instance, err error) {
-	log.Debug("######## Do Get instance: %s ports", instanceID)
+	log.Debugf("######## Do Get instance: %s ports", instanceID)
 	instance = &ipamTypes.Instance{}
 	instance.Interfaces = map[string]ipamTypes.InterfaceRevision{}
 	var networkInterfaces []ports.Port
@@ -502,48 +505,82 @@ func (c *Client) AssignPrivateIPAddresses(ctx context.Context, eniID string, toA
 	portsToUpdate := map[string]ports.Port{}
 
 	ps := c.available[pool].get(toAllocate)
-	log.Infof("####### ready to allocate ips for eni %s, ports: %+v", eniID, ps)
-	for _, p := range ps {
-		if len(p.FixedIPs) == 0 {
-			log.Errorf("##### ops! no fixed ip found on port %s", p.ID)
-			continue
-		}
-		portsToUpdate[p.ID] = p
-	}
 
-	for _, p := range portsToUpdate {
-		if _, exist := c.failureRecord.Load(p.FixedIPs[0].IPAddress); exist {
-			delete(portsToUpdate, p.FixedIPs[0].IPAddress)
-		}
-	}
-
-	log.Infof("######## Do Assign ip addresses for nic %s, count is %d", eniID, toAllocate)
 	var addresses []string
 	var pairs []ports.AddressPair
-	for _, p := range portsToUpdate {
-		portName := fmt.Sprintf(PodInterfaceName+"-%s", randomString(10))
-		_, err = ports.Update(c.neutronV2, p.ID, ports.UpdateOpts{
-			Name:     &portName,
-			DeviceID: &eniID,
-		}).Extract()
-		if err != nil {
-			log.Errorf("######## Failed to update port: %s, allowedAddressPair: %s, with error %s", eniID, p.ID, err)
-		} else {
+	var pids []string
+
+	if len(ps) != 0 {
+		log.Infof("####### ready to allocate ips for eni %s, ports: %+v", eniID, ps)
+		for _, p := range ps {
+			if len(p.FixedIPs) == 0 {
+				log.Errorf("##### ops! no fixed ip found on port %s", p.ID)
+				continue
+			}
+			portsToUpdate[p.ID] = p
+		}
+
+		for _, p := range portsToUpdate {
+			if _, exist := c.failureRecord.Load(p.ID); exist {
+				delete(portsToUpdate, p.FixedIPs[0].IPAddress)
+			}
+		}
+
+		log.Infof("######## Do Assign ip addresses for nic %s, count is %d", eniID, toAllocate)
+
+		for _, p := range portsToUpdate {
+			portName := fmt.Sprintf(PodInterfaceName+"-%s", randomString(10))
+			_, err = ports.Update(c.neutronV2, p.ID, ports.UpdateOpts{
+				Name:     &portName,
+				DeviceID: &eniID,
+			}).Extract()
+			if err != nil {
+				log.Errorf("######## Failed to update port: %s, allowedAddressPair: %s, with error %s", eniID, p.ID, err)
+			} else {
+				pairs = append(pairs, ports.AddressPair{
+					IPAddress:  p.FixedIPs[0].IPAddress,
+					MACAddress: port.MACAddress,
+				})
+
+				addresses = append(addresses, p.FixedIPs[0].IPAddress)
+				pids = append(pids, p.ID)
+			}
+		}
+	} else {
+		for i := 0; i < toAllocate; i++ {
+			opt := PortCreateOpts{
+				Name:        fmt.Sprintf(PodInterfaceName+"-%s", randomString(10)),
+				NetworkID:   port.NetworkID,
+				SubnetID:    port.FixedIPs[0].SubnetID,
+				DeviceOwner: PodDeviceOwner,
+				DeviceID:    eniID,
+				ProjectID:   c.filters[ProjectID],
+			}
+			p, err := c.createPort(opt)
+			if err != nil {
+				recordTime := time.Now()
+				for _, id := range pids {
+					c.failureRecord.Store(id, recordTime)
+				}
+				log.Errorf("######## Failed to create port with error %s", err)
+				return addresses, err
+			}
 			pairs = append(pairs, ports.AddressPair{
-				IPAddress:  p.FixedIPs[0].IPAddress,
+				IPAddress:  p.IP,
 				MACAddress: port.MACAddress,
 			})
 
-			addresses = append(addresses, p.FixedIPs[0].IPAddress)
+			addresses = append(addresses, p.IP)
+			pids = append(pids, p.ID)
 		}
 	}
 
-	if len(pairs) > 0 {
+	if len(pids) > 0 {
 		err = c.addPortAllowedAddressPairs(eniID, pairs)
 		if err != nil {
 			recordTime := time.Now()
-			for _, pair := range pairs {
-				c.failureRecord.Store(pair.IPAddress, recordTime)
+			for _, id := range pids {
+				c.failureRecord.Store(id, recordTime)
 			}
 			log.Errorf("######## Failed to add allowed address pairs: %s, with error %s, pairs: %+v", eniID, err, pairs)
 			return nil, err
@@ -1187,7 +1224,7 @@ func (c *Client) FillingAvailablePool() {
 
 				if createCount <= 0 {
 					log.Infof("##### no need to create port for pool %s, cause has reached the waterMark.", cpip.Name)
-					err = ipam.UpdateCiliumIPPoolStatus(cpip.Name, "", "", "", true)
+					err = ipam.UpdateCiliumIPPoolStatus(cpip.Name, "", "", "", true, availableIps)
 					if err != nil {
 						log.Errorf("update ciliumPodIPPool %s failed, error is %s.", cpip.Name, err)
 					}
@@ -1201,8 +1238,17 @@ func (c *Client) FillingAvailablePool() {
 					AvailableIps: availableIps,
 				}
 
-				if createCount > 20 {
-					opt.CreateCount = 20
+				var maxFreePort int
+				if cpip.Spec.MaxFreePort == 0 {
+					maxFreePort = DefaultMaxCreatePort
+				}
+
+				if createCount+availableIps > maxFreePort {
+					createCount = maxFreePort - availableIps
+				}
+
+				if createCount > DefaultCreatePortsInBulk {
+					opt.CreateCount = DefaultCreatePortsInBulk
 				} else {
 					opt.CreateCount = createCount
 				}

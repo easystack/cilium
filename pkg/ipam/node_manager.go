@@ -8,12 +8,13 @@ package ipam
 import (
 	"context"
 	"fmt"
-	cilium_v2 "github.com/cilium/cilium/pkg/k8s/apis/cilium.io/v2alpha1"
-	"github.com/cilium/cilium/pkg/openstack/eni/limits"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sort"
 	"strings"
 	"time"
+
+	cilium_v2 "github.com/cilium/cilium/pkg/k8s/apis/cilium.io/v2alpha1"
+	"github.com/cilium/cilium/pkg/openstack/eni/limits"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/sirupsen/logrus"
 	"golang.org/x/sync/semaphore"
@@ -625,7 +626,7 @@ func (n *NodeManager) SyncMultiPool(node *Node) error {
 				if hasIps {
 					// If both ENI and pool annotation exist, create the crdPool and set pool status to Active
 					node.pools[Pool(p)] = NewCrdPool(Pool(p), node, n.releaseExcessIPs, Active)
-					err := UpdateCiliumIPPoolStatus(p, node.name, "Ready", "Created crd pool success.", false)
+					err := UpdateCiliumIPPoolStatus(p, node.name, "Ready", "Created crd pool success.", false, -1)
 					if err != nil {
 						log.Errorf("Update CiliumIPPool status failed, error is %s.", err)
 					}
@@ -634,7 +635,7 @@ func (n *NodeManager) SyncMultiPool(node *Node) error {
 
 				if hasENI {
 					node.pools[Pool(p)] = NewCrdPool(Pool(p), node, n.releaseExcessIPs, WaitingForAllocate)
-					err := UpdateCiliumIPPoolStatus(p, node.name, "NotReady", "Pool is not ready, is waiting for allocate.", false)
+					err := UpdateCiliumIPPoolStatus(p, node.name, "NotReady", "Pool is not ready, is waiting for allocate.", false, -1)
 					if err != nil {
 						log.Errorf("Update CiliumIPPool status failed, error is %s.", err)
 					}
@@ -643,7 +644,7 @@ func (n *NodeManager) SyncMultiPool(node *Node) error {
 
 				// upper pool limit
 				if len(node.pools) == MaxPools {
-					err := UpdateCiliumIPPoolStatus(p, node.name, "NotReady", "The node has reached the upper pool limit.", false)
+					err := UpdateCiliumIPPoolStatus(p, node.name, "NotReady", "The node has reached the upper pool limit.", false, -1)
 					if err != nil {
 						log.Errorf("Update CiliumIPPool status failed, error is %s.", err)
 					}
@@ -658,7 +659,7 @@ func (n *NodeManager) SyncMultiPool(node *Node) error {
 
 				// upper eni limit
 				if len(node.resource.Status.OpenStack.ENIs) == limit.Adapters {
-					err := UpdateCiliumIPPoolStatus(p, node.name, "NotReady", "The node has reached the upper eni limit.", false)
+					err := UpdateCiliumIPPoolStatus(p, node.name, "NotReady", "The node has reached the upper eni limit.", false, -1)
 					if err != nil {
 						log.Errorf("Update CiliumIPPool status failed, error is %s.", err)
 					}
@@ -667,7 +668,7 @@ func (n *NodeManager) SyncMultiPool(node *Node) error {
 
 				// Meet the crdPool creation requirements
 				node.pools[Pool(p)] = NewCrdPool(Pool(p), node, n.releaseExcessIPs, WaitingForAllocate)
-				err := UpdateCiliumIPPoolStatus(p, node.name, "NotReady", "Pool is not ready, is waiting for allocate.", false)
+				err := UpdateCiliumIPPoolStatus(p, node.name, "NotReady", "Pool is not ready, is waiting for allocate.", false, -1)
 				if err != nil {
 					log.Errorf("Update CiliumIPPool status failed, error is %s.", err)
 				}

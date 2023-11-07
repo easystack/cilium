@@ -6,6 +6,10 @@ package ipam
 import (
 	"context"
 	"fmt"
+	"strings"
+	"sync"
+	"time"
+
 	operatorOption "github.com/cilium/cilium/operator/option"
 	"github.com/cilium/cilium/operator/watchers"
 	ipamTypes "github.com/cilium/cilium/pkg/ipam/types"
@@ -20,9 +24,6 @@ import (
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/tools/cache"
-	"strings"
-	"sync"
-	"time"
 )
 
 var (
@@ -659,7 +660,7 @@ func SyncPoolToAPIServer(subnets ipamTypes.SubnetMap) {
 
 	}
 }
-func UpdateCiliumIPPoolStatus(pool string, node string, status, phase string, maxPoolReached bool) error {
+func UpdateCiliumIPPoolStatus(pool string, node string, status, phase string, maxPoolReached bool, curFreePort int) error {
 	ipPool, err := k8sManager.GetCiliumPodIPPool(pool)
 	if err != nil {
 		return err
@@ -681,6 +682,10 @@ func UpdateCiliumIPPoolStatus(pool string, node string, status, phase string, ma
 		}
 
 		ipPool.Status.Items = m
+	}
+
+	if curFreePort != -1 {
+		ipPool.Status.CurrentFreePort = curFreePort
 	}
 
 	_, err = k8sManager.alphaClient.CiliumPodIPPools().Update(context.TODO(), ipPool, v1.UpdateOptions{})

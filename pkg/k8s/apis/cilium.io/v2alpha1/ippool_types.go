@@ -59,19 +59,25 @@ type IPPoolSpec struct {
 
 	// +kubebuilder:validation:Optional
 	FilingStep string `json:"filing-step"`
+
+	// +kubebuilder:validation:Optional
+	MaxFreePort int `json:"max-free-port"`
 }
 
 // IPPoolStatus describe the status of the nodes which uses the pool
 type IPPoolStatus struct {
-	// Items is a list of CiliumPodIPPools.
-	// +kubebuilder:validation:Optional
-	Items map[string]ItemSpec `json:"items"`
-
 	// +kubebuilder:validation:Optional
 	Active bool `json:"active"`
 
 	// +kubebuilder:validation:Optional
 	MaxPortsReached bool `json:"max-ports-reached"`
+
+	// +kubebuilder:validation:Optional
+	CurrentFreePort int `json:"current-free-port"`
+
+	// Items is a list of CiliumPodIPPools.
+	// +kubebuilder:validation:Optional
+	Items map[string]ItemSpec `json:"items"`
 }
 
 // ItemSpec describe the status of the node which uses the pool

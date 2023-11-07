@@ -513,6 +513,9 @@ func (in *IPPoolSpec) DeepEqual(other *IPPoolSpec) bool {
 	if in.FilingStep != other.FilingStep {
 		return false
 	}
+	if in.MaxFreePort != other.MaxFreePort {
+		return false
+	}
 
 	return true
 }
@@ -524,6 +527,15 @@ func (in *IPPoolStatus) DeepEqual(other *IPPoolStatus) bool {
 		return false
 	}
 
+	if in.Active != other.Active {
+		return false
+	}
+	if in.MaxPortsReached != other.MaxPortsReached {
+		return false
+	}
+	if in.CurrentFreePort != other.CurrentFreePort {
+		return false
+	}
 	if ((in.Items != nil) && (other.Items != nil)) || ((in.Items == nil) != (other.Items == nil)) {
 		in, other := &in.Items, &other.Items
 		if other == nil {
@@ -543,13 +555,6 @@ func (in *IPPoolStatus) DeepEqual(other *IPPoolStatus) bool {
 				}
 			}
 		}
-	}
-
-	if in.Active != other.Active {
-		return false
-	}
-	if in.MaxPortsReached != other.MaxPortsReached {
-		return false
 	}
 
 	return true
