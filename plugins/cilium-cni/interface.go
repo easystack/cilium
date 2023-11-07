@@ -57,7 +57,7 @@ func interfaceAdd(ipConfig *current.IPConfig, ipam *models.IPAMAddressResponse, 
 	}
 
 	var routeConfErr error
-	if conf.DaemonConfigurationMap["EnableHostLegacyRouting"].(bool) {
+	if conf.DaemonConfigurationMap["KubeProxyReplacement"].(bool) {
 		routingInfo.PrimaryIntfName = conf.DaemonConfigurationMap["DirectRoutingDevice"].(string)
 		routeConfErr = routingInfo.ConfigureForLegacy(
 			ipConfig.Address.IP,
