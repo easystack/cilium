@@ -137,7 +137,7 @@ func (info *RoutingInfo) Configure(ip net.IP, mtu int, compat bool) error {
 
 // In HostLegacyRouting, avoid rp_filter check
 func (info *RoutingInfo) ConfigureForLegacy(ip net.IP, mtu int, compat bool) error {
-	log.Debugf("############## RoutingInfo is %+v", info)
+	log.Debugf("############Legacy RoutingInfo is %+v", info)
 	if ip.To4() == nil {
 		log.WithFields(logrus.Fields{
 			"endpointIP": ip,
@@ -232,7 +232,7 @@ func (info *RoutingInfo) ConfigureForLegacy(ip net.IP, mtu int, compat bool) err
 		routeCIDRs = append(routeCIDRs, cidr)
 	}
 	// END
-	log.Errorf("############## Add tree routes ifindex is %d, tableID is %d, info is %+v", ifindex, tableID, info)
+	log.Debugf("############## Add tree routes ifindex is %d, tableID is %d, info is %+v", ifindex, tableID, info)
 	// Nexthop route to the VPC or subnet gateway
 	//
 	// Note: This is a /32 route to avoid any L2. The endpoint does no L2
