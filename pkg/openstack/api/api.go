@@ -504,6 +504,10 @@ func (c *Client) AssignPrivateIPAddresses(ctx context.Context, eniID string, toA
 	ps := c.available[pool].get(toAllocate)
 	log.Infof("####### ready to allocate ips for eni %s, ports: %+v", eniID, ps)
 	for _, p := range ps {
+		if len(p.FixedIPs) == 0 {
+			log.Errorf("##### ops! no fixed ip found on port %s", p.ID)
+			continue
+		}
 		portsToUpdate[p.ID] = p
 	}
 
@@ -554,6 +558,11 @@ func (c *Client) AssignPrivateIPAddresses(ctx context.Context, eniID string, toA
 // UnassignPrivateIPAddresses unassign specified IP addresses from ENI
 // should not provide Primary IP
 func (c *Client) UnassignPrivateIPAddresses(ctx context.Context, eniID string, addresses []string, pool string) (isEmpty bool, err error) {
+
+	if pool == "" {
+		return false, errors.New("no pool specified, can not unAssign ")
+	}
+
 	log.Errorf("Do Unassign ip addresses for nic %s, addresses to release is %s", eniID, addresses)
 
 	port, err := c.getPort(eniID)
@@ -1108,20 +1117,22 @@ func (c *Client) bulkCreatePort(opts []BulkCreatePortsOpts) {
 }
 
 func (c *Client) FillingAvailablePool() {
-	c.mutex.RLock()
-	inProgress := c.inCreatingProgress
-	lastSyncTime := c.syncAvailablePoolTime
-	c.mutex.RUnlock()
+	c.mutex.Lock()
 
-	if inProgress {
+	if c.inCreatingProgress {
+		c.mutex.Unlock()
 		log.Infof("allocate cancel due to last filling job still in progress")
 		return
 	}
 
-	if time.Now().Sub(lastSyncTime) < time.Minute {
+	if time.Now().Sub(c.syncAvailablePoolTime) < time.Minute {
+		c.mutex.Unlock()
 		log.Infof("Can't call create port api too often !")
 		return
 	}
+
+	c.inCreatingProgress = true
+	c.mutex.Unlock()
 
 	defer func() {
 		c.mutex.Lock()
@@ -1137,7 +1148,7 @@ func (c *Client) FillingAvailablePool() {
 	mutex := sync.Mutex{}
 
 	for _, cpip := range cpips {
-		if cpip.Status.Active && !cpip.Status.MaxPortsReached {
+		if cpip.Status.Active && !cpip.Status.MaxPortsReached && cpip.Name != "" {
 			err := sem.Acquire(context.TODO(), 1)
 			if err != nil {
 				continue
@@ -1215,9 +1226,12 @@ func (c *Client) FillingAvailablePool() {
 func (c *Client) RefreshAvailablePool() {
 	cpips := ipam.ListCiliumIPPool()
 	log.Infoln("#### ready to refresh available pool")
+	wg := sync.WaitGroup{}
 	for _, cpip := range cpips {
 		if cpip.Status.Active {
+			wg.Add(1)
 			go func(pool string) {
+				defer wg.Done()
 				err := c.describeNetworkInterfacesByAvailablePool(pool)
 				if err != nil {
 					log.Errorf("###### Failed to refresh availble pool for %s, error is %s.", pool, err)
@@ -1225,6 +1239,7 @@ func (c *Client) RefreshAvailablePool() {
 			}(cpip.Name)
 		}
 	}
+	wg.Wait()
 }
 
 func (c *Client) getPortCountBySubnetId(subnetId, networkId string) (int, error) {
