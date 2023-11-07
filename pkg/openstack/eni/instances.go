@@ -217,7 +217,7 @@ func (m *InstancesManager) resync(ctx context.Context, instanceID string) time.T
 	// will be refetched from EC2 API and updated to the local cache. Otherwise only
 	// the given instance will be updated.
 	if instanceID == "" {
-		go m.api.RefreshAvailablePool()
+		m.api.RefreshAvailablePool()
 		instances, err := m.api.GetInstances(ctx, subnets, azs)
 		if err != nil {
 			log.WithError(err).Warning("Unable to synchronize ECS interface list")

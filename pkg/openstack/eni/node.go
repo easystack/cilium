@@ -400,7 +400,7 @@ func (n *Node) PrepareIPRelease(excessIPs int, scopedLog *logrus.Entry, pool ipa
 
 // ReleaseIPs performs the ENI IP release operation
 func (n *Node) ReleaseIPs(ctx context.Context, r *ipam.ReleaseAction, pool string) error {
-	isEmpty, err := n.manager.api.UnassignPrivateIPAddresses(ctx, r.InterfaceID, r.IPsToRelease, "")
+	isEmpty, err := n.manager.api.UnassignPrivateIPAddresses(ctx, r.InterfaceID, r.IPsToRelease, pool)
 	if err != nil {
 		return err
 	}
