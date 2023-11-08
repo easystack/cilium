@@ -504,7 +504,7 @@ func (n *Node) recalculate() {
 		"waitingForPoolMaintenance": n.waitingForPoolMaintenance,
 		"resyncNeeded":              n.resyncNeeded,
 		"remainingInterfaces":       stats.RemainingAvailableInterfaceCount,
-	}).Debug("Recalculated needed addresses")
+	}).Debugf("Recalculated needed addresses, instance id is %s", n.name)
 }
 
 // allocationNeeded returns true if this node requires IPs to be allocated
