@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/cilium/cilium/pkg/ipam/staticip"
+	"github.com/cilium/cilium/pkg/k8s/apis/cilium.io/v2alpha1"
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
 	"net"
@@ -606,20 +607,30 @@ func (n *nodeStore) allocate(ip net.IP, pool Pool, owner string) (*ipamTypes.All
 		return nil, fmt.Errorf("IP not available, marked or ready for release")
 	}
 
-	ipInfo, ok := n.ownNode.Spec.IPAM.CrdPools[pool.String()][ip.String()]
-	if !ok {
-		return nil, NewIPNotAvailableInPoolError(ip)
-	}
-
-	ipInfo.Pool = pool.String()
-
 	csip, err := n.csipMgr.GetStaticIPForPod(owner)
 	if err != nil {
 		return nil, fmt.Errorf("get csip crd failed, error is %s", err)
 	}
 
-	if csip != nil && csip.Spec.ENIId != ipInfo.Resource {
-		return nil, fmt.Errorf("IP not available, expected value is %s, but get is %s", csip.Spec.ENIId, ipInfo.Resource)
+	ipInfo := ipamTypes.AllocationIP{
+		Pool: pool.String(),
+	}
+	var exist bool
+
+	if csip != nil && csip.Status.IPStatus == v2alpha1.Assigned {
+		if csip.Spec.ENIId != "" {
+			ipInfo.Resource = csip.Spec.ENIId
+		} else {
+			return nil, NewIPNotAvailableInPoolError(ip)
+		}
+	} else {
+		ipInfo, exist = n.ownNode.Spec.IPAM.CrdPools[pool.String()][ip.String()]
+		if !exist {
+			return nil, NewIPNotAvailableInPoolError(ip)
+		}
+		if csip != nil && csip.Spec.ENIId != ipInfo.Resource {
+			return nil, fmt.Errorf("IP not available, expected value is %s, but get is %s", csip.Spec.ENIId, ipInfo.Resource)
+		}
 	}
 
 	return &ipInfo, nil

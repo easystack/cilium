@@ -218,7 +218,7 @@ func NewClient(metrics MetricsAPI, rateLimit float64, burst int, filters map[str
 		allocator := controller.NewManager()
 		allocator.UpdateController("neutron-port-allocator",
 			controller.ControllerParams{
-				RunInterval: time.Minute * 2,
+				RunInterval: time.Minute,
 				DoFunc: func(ctx context.Context) error {
 					c.FillingAvailablePool()
 					return nil
@@ -1241,6 +1241,8 @@ func (c *Client) FillingAvailablePool() {
 				var maxFreePort int
 				if cpip.Spec.MaxFreePort == 0 {
 					maxFreePort = DefaultMaxCreatePort
+				} else {
+					maxFreePort = cpip.Spec.MaxFreePort
 				}
 
 				if createCount+availableIps > maxFreePort {
