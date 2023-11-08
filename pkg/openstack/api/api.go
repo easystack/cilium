@@ -118,9 +118,13 @@ func (a *poolAvailable) get(num int) []ports.Port {
 	if ava < num {
 		num = ava
 	}
+	log.Debugf("##### before get, pool size is %d", len(a.port))
+	dest := make([]ports.Port, num)
 	ps := a.port[:num]
+	copy(dest, ps)
 	a.port = a.port[num:]
-	return ps
+	log.Debugf("##### get %d ports from pool, port is %+v, pool size is %d", num, dest, len(a.port))
+	return dest
 }
 
 func (a *poolAvailable) update(ports []ports.Port) {
@@ -838,6 +842,9 @@ func parseENI(port *ports.Port, subnets ipamTypes.SubnetMap) (instanceID string,
 	if ok && subnet.CIDR != nil {
 		eni.Subnet.CIDR = subnet.CIDR.String()
 	}
+	if !ok {
+		log.Errorf("##### ops! parse eni failed,subnet ID: %s not found.", subnetID)
+	}
 
 	var ipsets []eniTypes.PrivateIPSet
 	for _, pairs := range port.AllowedAddressPairs {
@@ -1283,6 +1290,10 @@ func (c *Client) RefreshAvailablePool() {
 				err := c.describeNetworkInterfacesByAvailablePool(pool)
 				if err != nil {
 					log.Errorf("###### Failed to refresh availble pool for %s, error is %s.", pool, err)
+				}
+
+				if _, exist := c.available[pool]; exist {
+					_ = ipam.UpdateCiliumIPPoolStatus(cpip.Name, "", "", "", false, c.available[pool].size())
 				}
 			}(cpip.Name)
 		}
