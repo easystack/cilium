@@ -20,7 +20,6 @@ import (
 	"github.com/cilium/cilium/pkg/gops"
 	"github.com/cilium/cilium/pkg/hive/cell"
 	"github.com/cilium/cilium/pkg/hive/job"
-	"github.com/cilium/cilium/pkg/ipam/ciliumpodippoolmonitor"
 	ipamMetadata "github.com/cilium/cilium/pkg/ipam/metadata"
 	"github.com/cilium/cilium/pkg/ipam/staticip"
 	"github.com/cilium/cilium/pkg/k8s"
@@ -140,8 +139,6 @@ var (
 		ipamMetadata.Cell,
 
 		staticip.Cell,
-
-		ciliumpodippoolmonitor.Cell,
 
 		// Egress Gateway allows originating traffic from specific IPv4 addresses.
 		egressgateway.Cell,

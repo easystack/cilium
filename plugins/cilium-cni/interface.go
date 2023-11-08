@@ -7,11 +7,11 @@ import (
 	"fmt"
 	"net"
 
+	current "github.com/containernetworking/cni/pkg/types/100"
+
 	"github.com/cilium/cilium/api/v1/models"
 	linuxrouting "github.com/cilium/cilium/pkg/datapath/linux/routing"
 	"github.com/cilium/cilium/pkg/ip"
-	agentOption "github.com/cilium/cilium/pkg/option"
-	current "github.com/containernetworking/cni/pkg/types/100"
 )
 
 func interfaceAdd(ipConfig *current.IPConfig, ipam *models.IPAMAddressResponse, conf *models.DaemonConfigurationStatus) error {
@@ -56,23 +56,11 @@ func interfaceAdd(ipConfig *current.IPConfig, ipam *models.IPAMAddressResponse, 
 		return fmt.Errorf("unable to parse routing info: %v", err)
 	}
 
-	var routeConfErr error
-	if conf.DaemonConfigurationMap["KubeProxyReplacement"].(string) == agentOption.KubeProxyReplacementFalse {
-		routingInfo.PrimaryIntfName = conf.DaemonConfigurationMap["DirectRoutingDevice"].(string)
-		routeConfErr = routingInfo.ConfigureForLegacy(
-			ipConfig.Address.IP,
-			int(conf.DeviceMTU),
-			conf.EgressMultiHomeIPRuleCompat,
-		)
-	} else {
-		routeConfErr = routingInfo.Configure(
-			ipConfig.Address.IP,
-			int(conf.DeviceMTU),
-			conf.EgressMultiHomeIPRuleCompat,
-		)
-	}
-
-	if routeConfErr != nil {
+	if err := routingInfo.Configure(
+		ipConfig.Address.IP,
+		int(conf.DeviceMTU),
+		conf.EgressMultiHomeIPRuleCompat,
+	); err != nil {
 		return fmt.Errorf("unable to install ip rules and routes: %s", err)
 	}
 
