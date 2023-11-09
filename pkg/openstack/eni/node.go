@@ -5,6 +5,7 @@ package eni
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"github.com/cilium/cilium/pkg/defaults"
 	"github.com/cilium/cilium/pkg/ipam"
@@ -161,7 +162,7 @@ func (n *Node) CreateInterface(ctx context.Context, allocation *ipam.AllocationA
 		scopedLog.WithField("instanceID", instanceID).Error(err)
 		return 0, "Failed to allocate eni index", err
 	}
-	scopedLog.Info("########### got index is %d", index)
+	scopedLog.Infof("########### got index is %d", index)
 	err = n.manager.api.AddTagToNetworkInterface(ctx, eniID, utils.FillTagWithENIIndex(index))
 	if err != nil {
 		scopedLog.Errorf("########### Failed to add tag with error: %+v, %s", err, err)
@@ -621,15 +622,28 @@ func (n *Node) ResyncInterfacesAndIPsByPool(ctx context.Context, scopedLog *logr
 	return poolAvailable, stats, nil
 }
 
-func (n *Node) AllocateStaticIP(ctx context.Context, address string, interfaceId string, pool ipam.Pool, portId string) (string, error) {
+func (n *Node) AllocateStaticIP(ctx context.Context, address string, pool ipam.Pool, portId string) (string, string, error) {
 	log.Infof("@@@@@@@@@@@@@@@@@@@ Do Allocate static IP..... %v", address)
+
+	var interfaceId string
+	enis := n.poolsEnis[pool]
+	for _, eni := range enis {
+		if _, exist := n.enis[eni]; exist {
+			interfaceId = eni
+			break
+		}
+	}
+
+	if interfaceId == "" {
+		return "", "", errors.New("no interface available")
+	}
 
 	portId, err := n.manager.api.AssignStaticPrivateIPAddresses(ctx, interfaceId, address, portId)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 
-	return portId, nil
+	return portId, interfaceId, nil
 }
 
 func (n *Node) UnbindStaticIP(ctx context.Context, address string, vpcID string) error {

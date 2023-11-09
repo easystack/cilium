@@ -199,24 +199,25 @@ func (m *InstancesManager) InstanceSync(ctx context.Context, instanceID string) 
 func (m *InstancesManager) resync(ctx context.Context, instanceID string) time.Time {
 	resyncStart := time.Now()
 
-	azs, err := m.api.GetAzs(ctx)
-	if err != nil {
-		log.WithError(err).Warning("Unable to synchronize AZ list")
-		return time.Time{}
-	}
-
-	log.Infof("##### az list is %+v", azs)
-
-	subnets, err := m.api.GetSubnets(ctx)
-	if err != nil {
-		log.WithError(err).Warning("Unable to retrieve VPC vSwitches list")
-		return time.Time{}
-	}
+	var subnets ipamTypes.SubnetMap
 
 	// An empty instanceID indicates that this is full resync, ENIs from all instances
 	// will be refetched from EC2 API and updated to the local cache. Otherwise only
 	// the given instance will be updated.
 	if instanceID == "" {
+		azs, err := m.api.GetAzs(ctx)
+		if err != nil {
+			log.WithError(err).Warning("Unable to synchronize AZ list")
+			return time.Time{}
+		}
+
+		log.Infof("##### az list is %+v", azs)
+
+		subnets, err = m.api.GetSubnets(ctx)
+		if err != nil {
+			log.WithError(err).Warning("Unable to retrieve VPC vSwitches list")
+			return time.Time{}
+		}
 		m.api.RefreshAvailablePool()
 		instances, err := m.api.GetInstances(ctx, subnets, azs)
 		if err != nil {
@@ -233,7 +234,7 @@ func (m *InstancesManager) resync(ctx context.Context, instanceID string) time.T
 		defer m.mutex.Unlock()
 		m.instances = instances
 	} else {
-		instance, err := m.api.GetInstance(ctx, subnets, instanceID)
+		instance, err := m.api.GetInstance(ctx, m.subnets, instanceID)
 		if err != nil {
 			log.WithError(err).Warning("Unable to synchronize openstack interface list")
 			return time.Time{}
@@ -250,10 +251,10 @@ func (m *InstancesManager) resync(ctx context.Context, instanceID string) time.T
 	}
 
 	if subnets != nil {
+
+		m.subnets = subnets
 		ipam.SyncPoolToAPIServer(subnets)
 	}
-
-	m.subnets = subnets
 
 	return resyncStart
 }

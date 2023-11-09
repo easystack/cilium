@@ -7,11 +7,9 @@ package ipam
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"github.com/cilium/cilium/pkg/logging"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -149,8 +147,6 @@ type Node struct {
 	logLimiter logging.Limiter
 
 	pools map[Pool]pool
-
-	allocateStaticIpMutex sync.Mutex
 }
 
 // Statistics represent the IP allocation statistics of a node
@@ -326,9 +322,9 @@ func calculateNeededIPs(availableIPs, usedIPs, preAllocate, minAllocate, maxAllo
 
 	if maxAboveWatermark > 0 {
 		if usedIPs <= maxAboveWatermark-preAllocate {
-			neededIPs = maxAboveWatermark
+			neededIPs = maxAboveWatermark - availableIPs
 		} else {
-			neededIPs = usedIPs + preAllocate
+			neededIPs = usedIPs + preAllocate - availableIPs
 		}
 	}
 
@@ -430,20 +426,7 @@ func (n *Node) UpdatedResource(resource *v2.CiliumNode) bool {
 
 	n.recalculate()
 
-	allocationNeeded := false
-
-	for _, pool := range n.pools {
-		if pool.allocationNeeded() {
-			allocationNeeded = true
-			pool.requirePoolMaintenance()
-		}
-	}
-
-	if allocationNeeded {
-		n.poolMaintainer.Trigger()
-	}
-
-	return allocationNeeded
+	return false
 }
 
 func (n *Node) resourceAttached() (attached bool) {
@@ -504,7 +487,7 @@ func (n *Node) recalculate() {
 		"waitingForPoolMaintenance": n.waitingForPoolMaintenance,
 		"resyncNeeded":              n.resyncNeeded,
 		"remainingInterfaces":       stats.RemainingAvailableInterfaceCount,
-	}).Debug("Recalculated needed addresses")
+	}).Debugf("Recalculated needed addresses, instance id is %s", n.name)
 }
 
 // allocationNeeded returns true if this node requires IPs to be allocated
@@ -960,10 +943,6 @@ func (n *Node) updateLastResync(syncTime time.Time) {
 // MaintainIPPool attempts to allocate or release all required IPs to fulfill
 // the needed gap. If required, interfaces are created.
 func (n *Node) MaintainIPPool(ctx context.Context) error {
-
-	n.allocateStaticIpMutex.Lock()
-	defer n.allocateStaticIpMutex.Unlock()
-
 	// As long as the instances API is unstable, don't perform any
 	// operation that can mutate state.
 	if !n.manager.InstancesAPIIsReady() {
@@ -1005,11 +984,6 @@ func (n *Node) MaintainIPPool(ctx context.Context) error {
 				pool.requireResync()
 			}
 			pool.poolMaintenanceComplete()
-		}
-
-		if pool.waitingForSyncCsip() {
-			instanceMutated = true
-			pool.syncCsipComplete()
 		}
 	}
 	n.recalculate()
@@ -1190,67 +1164,17 @@ func (n *Node) update(origNode, node *v2.CiliumNode, attempts int, status bool) 
 	return err
 }
 
-func (n *Node) AllocateStaticIP(ip string, pool Pool, portId string) (string, string, error, *Statistics) {
+func (n *Node) AllocateStaticIP(ip string, pool Pool, portId string) (string, string, error) {
+	var err error
+	var eniId string
 
-	scopedLog := n.logger()
-	p := n.pools[pool]
-	stats := p.getStatics()
-	n.allocateStaticIpMutex.Lock()
-	defer n.allocateStaticIpMutex.Unlock()
+	portId, eniId, err = n.ops.AllocateStaticIP(context.TODO(), ip, pool, portId)
 
-	allocation, err := n.ops.PrepareIPAllocation(scopedLog, pool)
-	if err != nil {
-		return "", "", err, nil
+	if err == nil {
+		return portId, eniId, nil
 	}
 
-	allocation.MaxIPsToAllocate = 1
-
-	if allocation != nil {
-		stats.RemainingInterfaces = allocation.InterfaceCandidates + allocation.EmptyInterfaceSlots
-		scopedLog = scopedLog.WithFields(logrus.Fields{
-			"selectedInterface":      allocation.InterfaceID,
-			"selectedPoolID":         allocation.PoolID,
-			"maxIPsToAllocate":       allocation.MaxIPsToAllocate,
-			"availableForAllocation": allocation.AvailableForAllocation,
-			"emptyInterfaceSlots":    allocation.EmptyInterfaceSlots,
-		})
-	}
-
-	scopedLog.WithFields(logrus.Fields{
-		"available":           stats.AvailableIPs,
-		"used":                stats.UsedIPs,
-		"neededIPs":           stats.NeededIPs,
-		"remainingInterfaces": stats.RemainingInterfaces,
-	}).Infof("Resolving IP deficit of node pool: %v", p)
-
-	if allocation == nil {
-		scopedLog.Debug("No allocation action required")
-		return "", "", errors.New("allocate static ip failed, no allocation action required"), nil
-	}
-
-	// Assign needed addresses
-	if allocation.AvailableForAllocation > 0 {
-		allocation.AvailableForAllocation = math.IntMin(allocation.AvailableForAllocation, allocation.MaxIPsToAllocate)
-
-		start := time.Now()
-
-		portId, err = n.ops.AllocateStaticIP(context.TODO(), ip, allocation.InterfaceID, pool, portId)
-
-		if err == nil {
-			p.requireSyncCsip()
-			n.manager.metricsAPI.AllocationAttempt(allocateIP, success, string(allocation.PoolID), metrics.SinceInSeconds(start))
-			n.manager.metricsAPI.AddIPAllocation(string(allocation.PoolID), int64(allocation.AvailableForAllocation))
-			return portId, allocation.InterfaceID, nil, stats
-		}
-
-		n.manager.metricsAPI.AllocationAttempt(allocateIP, failed, string(allocation.PoolID), metrics.SinceInSeconds(start))
-		scopedLog.WithFields(logrus.Fields{
-			"selectedInterface": allocation.InterfaceID,
-			"ipsToAllocate":     allocation.AvailableForAllocation,
-		}).WithError(err).Warningf("Unable to assign additional IPs to interface %s", allocation.InterfaceID)
-	}
-
-	return "", "", fmt.Errorf("No interface available. "), nil
+	return "", "", fmt.Errorf("No interface available. ")
 }
 
 // CrdPools returns the IP allocation pool available to the node

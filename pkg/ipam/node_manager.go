@@ -112,7 +112,7 @@ type NodeOperations interface {
 
 	// AllocateStaticIP is called after invoking PrepareIPAllocation and needs
 	// to allocate the static ip on specific eni.
-	AllocateStaticIP(ctx context.Context, address string, interfaceId string, pool Pool, portId string) (string, error)
+	AllocateStaticIP(ctx context.Context, address string, pool Pool, portId string) (pId string, eniId string, err error)
 
 	// UnbindStaticIP is called to unbind the static ip from eni but retain the neutron port
 	UnbindStaticIP(ctx context.Context, address string, poolID string) error

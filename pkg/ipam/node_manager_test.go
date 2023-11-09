@@ -99,7 +99,7 @@ func (n *nodeOperationsMock) GetPoolUsedIPWithPrefixes(pool string) int {
 	panic("implement me")
 }
 
-func (n *nodeOperationsMock) AllocateStaticIP(ctx context.Context, address string, interfaceId string, pool Pool, portId string) (string, error) {
+func (n *nodeOperationsMock) AllocateStaticIP(ctx context.Context, address string, pool Pool, portId string) (string, string, error) {
 	//TODO implement me
 	panic("implement me")
 }

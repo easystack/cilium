@@ -33,9 +33,6 @@ type pool interface {
 	poolMaintenanceComplete()
 	requireResync()
 	allocateStaticIP(ip string, pool Pool, portId string) (string, string, error)
-	requireSyncCsip()
-	syncCsipComplete()
-	waitingForSyncCsip() bool
 	poolStatus() poolStatus
 	setPoolStatus(s poolStatus)
 }
@@ -510,29 +507,11 @@ func (p *crdPool) requireResync() {
 }
 
 func (p *crdPool) allocateStaticIP(ip string, pool Pool, portID string) (string, string, error) {
-	pId, eniID, err, stats := p.node.AllocateStaticIP(ip, pool, portID)
+	pId, eniID, err := p.node.AllocateStaticIP(ip, pool, portID)
 	if err != nil {
 		return "", "", err
 	}
-	if stats != nil {
-		p.stats = stats
-	}
 	return pId, eniID, nil
-}
-
-func (p *crdPool) requireSyncCsip() {
-	p.needSyncCsip = true
-}
-
-func (p *crdPool) syncCsipComplete() {
-	p.mutex.Lock()
-	p.needSyncCsip = false
-	p.mutex.Unlock()
-
-}
-
-func (p *crdPool) waitingForSyncCsip() bool {
-	return p.needSyncCsip
 }
 
 func (p *crdPool) poolStatus() poolStatus {
