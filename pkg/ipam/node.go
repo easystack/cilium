@@ -321,7 +321,7 @@ func calculateNeededIPs(availableIPs, usedIPs, preAllocate, minAllocate, maxAllo
 	}
 
 	if maxAboveWatermark > 0 {
-		if usedIPs <= maxAboveWatermark-preAllocate {
+		if usedIPs <= maxAboveWatermark - preAllocate {
 			neededIPs = maxAboveWatermark - availableIPs
 		} else {
 			neededIPs = usedIPs + preAllocate - availableIPs
@@ -335,9 +335,6 @@ func calculateNeededIPs(availableIPs, usedIPs, preAllocate, minAllocate, maxAllo
 		neededIPs = maxAllocate - availableIPs
 	}
 
-	if neededIPs < 0 {
-		neededIPs = 0
-	}
 	return
 }
 
