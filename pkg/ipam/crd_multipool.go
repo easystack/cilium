@@ -359,19 +359,22 @@ func (p *crdPool) recalculate(allocate ipamTypes.AllocationMap, stats ipamStats.
 		p.stats.UsedIPs = len(p.node.resource.Status.IPAM.PoolUsed[p.name.String()])
 	}
 
-	// Get used IP count with prefixes included
-	usedIPForExcessCalc := p.stats.UsedIPs
-	if p.node.ops.IsPrefixDelegated() {
-		usedIPForExcessCalc = p.node.ops.GetPoolUsedIPWithPrefixes(p.name.String())
-	}
-
 	p.stats.AvailableIPs = len(p.available)
 	if p.status == Active || p.status == WaitingForAllocate {
-		p.stats.NeededIPs = calculateNeededIPs(p.stats.AvailableIPs, p.stats.UsedIPs, p.getPreAllocate(), p.getMinAllocate(), maxAllocate, p.getMaxAboveWatermark())
+		neededIPs := calculateNeededIPs(p.stats.AvailableIPs, p.stats.UsedIPs, p.getPreAllocate(), p.getMinAllocate(), maxAllocate, p.getMaxAboveWatermark())
+		if neededIPs >= 0 {
+			p.stats.NeededIPs = neededIPs
+			p.stats.ExcessIPs = 0
+		} else {
+			p.stats.ExcessIPs = -neededIPs
+			p.stats.NeededIPs = 0
+		}
 	} else {
 		p.stats.NeededIPs = 0
+		p.stats.ExcessIPs = 0
 	}
-	p.stats.ExcessIPs = calculateExcessIPs(p.stats.AvailableIPs, usedIPForExcessCalc, p.getPreAllocate(), p.getMinAllocate(), p.node.getMaxAboveWatermark())
+	// calculateNeededIPs() return needs and excess
+	//p.stats.ExcessIPs = calculateExcessIPs(p.stats.AvailableIPs, usedIPForExcessCalc, p.getPreAllocate(), p.getMinAllocate(), p.node.getMaxAboveWatermark())
 	p.stats.RemainingInterfaces = stats.RemainingAvailableInterfaceCount
 	p.stats.Capacity = stats.NodeCapacity
 
