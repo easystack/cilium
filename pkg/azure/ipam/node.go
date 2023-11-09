@@ -43,8 +43,8 @@ func (n *Node) GetPoolUsedIPWithPrefixes(pool string) int {
 	return 0
 }
 
-func (n *Node) AllocateStaticIP(ctx context.Context, address string, interfaceId string, pool ipam.Pool, portId string) (string, error) {
-	return "", errors.New("AllocateStaticIP function for Azure ENI is not supported")
+func (n *Node) AllocateStaticIP(ctx context.Context, address string, pool ipam.Pool, portId string) (string, string, error) {
+	return "", "", errors.New("AllocateStaticIP function for Azure ENI is not supported")
 }
 
 func (n *Node) UnbindStaticIP(ctx context.Context, address string, poolID string) error {

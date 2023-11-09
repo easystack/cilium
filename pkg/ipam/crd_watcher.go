@@ -46,7 +46,7 @@ var (
 	// multiPoolExtraInit initialize the k8sManager
 	multiPoolExtraInit sync.Once
 
-	k8sManager = extraManager{reSyncMap: map[*Node]struct{}{}}
+	k8sManager = extraManager{}
 
 	creationDefaultPoolOnce sync.Once
 )
@@ -158,26 +158,7 @@ type extraManager struct {
 	nodeManager *NodeManager
 	client      slimclientset.Interface
 	alphaClient v2alpha12.CiliumV2alpha1Interface
-	updateMutex sync.Mutex
-	reSync      bool
-	reSyncMap   map[*Node]struct{}
 	apiReady    bool
-}
-
-func (extraManager) requireSync(node *Node) {
-	k8sManager.reSyncMap[node] = struct{}{}
-	k8sManager.reSync = true
-}
-
-func (extraManager) reSyncNeeded() bool {
-	return k8sManager.reSync
-}
-
-func (extraManager) reSyncCompleted() {
-	k8sManager.reSync = false
-	for node, _ := range k8sManager.reSyncMap {
-		delete(k8sManager.reSyncMap, node)
-	}
 }
 
 // ListCiliumIPPool returns all the *v2alpha1.CiliumPodIPPool from crdPoolStore
@@ -265,8 +246,6 @@ func judgeLabelDeepEqual(old, new map[string]string) bool {
 
 // updateStaticIP responds for reconcile the csip event
 func (m extraManager) updateStaticIP(ipCrd *v2alpha1.CiliumStaticIP) {
-	k8sManager.updateMutex.Lock()
-	defer k8sManager.updateMutex.Unlock()
 
 	node := ipCrd.Spec.NodeName
 	pool := ipCrd.Spec.Pool
@@ -284,8 +263,6 @@ func (m extraManager) updateStaticIP(ipCrd *v2alpha1.CiliumStaticIP) {
 					k8sManager.UpdateCiliumStaticIP(ipCrd, v2alpha1.WaitingForAssign, errMsg, "", "")
 					return
 				}
-				// allocate static ip success, so operator need to update the ciliumnode resource.
-				k8sManager.requireSync(n)
 				k8sManager.UpdateCiliumStaticIP(ipCrd, v2alpha1.Assigned, "", eniID, portId)
 			} else {
 				log.Errorf("can't not found pool %s on node %s, assign ip:%s for pod %s  cancel.", pool, node, ip, podFullName)
@@ -377,18 +354,6 @@ func (extraManager) maintainStaticIPCRDs(stop <-chan struct{}) {
 	for {
 		select {
 		case <-time.After(defaultGCTime):
-			k8sManager.updateMutex.Lock()
-
-			// get the newest vpc and enis from openstack api and sync the ciliumnode to apiServer
-			if k8sManager.reSyncNeeded() {
-				for node := range k8sManager.reSyncMap {
-					node.poolMaintainer.Trigger()
-					node.k8sSync.Trigger()
-				}
-				k8sManager.reSyncCompleted()
-			}
-			k8sManager.updateMutex.Unlock()
-
 			ipCRDs := k8sManager.listStaticIPs()
 			now := time.Now()
 
@@ -703,13 +668,12 @@ func (extraManager) UpdateCiliumStaticIP(csip *v2alpha1.CiliumStaticIP, status, 
 	csip = csip.DeepCopy()
 	if status == v2alpha1.Assigned {
 		csip.Spec.ENIId = eniId
+		csip.Spec.PortId = portId
 	}
 
 	if status == v2alpha1.Unbind || status == v2alpha1.WaitingForRelease {
 		csip.Spec.ENIId = ""
 	}
-	csip.Spec.ENIId = eniId
-	csip.Spec.PortId = portId
 
 	csip.Status.IPStatus = status
 	csip.Status.Phase = phase
