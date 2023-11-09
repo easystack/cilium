@@ -628,6 +628,7 @@ func (n *nodeStore) allocate(ip net.IP, pool Pool, owner string) (*ipamTypes.All
 		if !exist {
 			return nil, NewIPNotAvailableInPoolError(ip)
 		}
+		ipInfo.Pool = pool.String()
 		if csip != nil && csip.Spec.ENIId != ipInfo.Resource {
 			return nil, fmt.Errorf("IP not available, expected value is %s, but get is %s", csip.Spec.ENIId, ipInfo.Resource)
 		}
