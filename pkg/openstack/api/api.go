@@ -940,13 +940,18 @@ func validIPAddress(ipStr string, cidr *net.IPNet) bool {
 	return false
 }
 
-func (c *Client) describeNetworkInterfacesByAvailablePool(pool string) error {
+func (c *Client) describeNetworkInterfacesByAvailablePool(pool string, subnetId string) error {
 	var result []ports.Port
 	var err error
 
 	opts := ports.ListOpts{
 		ProjectID: c.filters[ProjectID],
 		DeviceID:  fmt.Sprintf(AvailablePoolFakeDeviceID+"%s", pool),
+		FixedIPs: []ports.FixedIPOpts{
+			{
+				SubnetID: subnetId,
+			},
+		},
 	}
 
 	err = ports.List(c.neutronV2, opts).EachPage(func(page pagination.Page) (bool, error) {
@@ -1366,7 +1371,7 @@ func (c *Client) RefreshAvailablePool() {
 			wg.Add(1)
 			go func(pool string) {
 				defer wg.Done()
-				err := c.describeNetworkInterfacesByAvailablePool(pool)
+				err := c.describeNetworkInterfacesByAvailablePool(pool, cpip.Spec.SubnetId)
 				if err != nil {
 					log.Errorf("###### Failed to refresh availble pool for %s, error is %s.", pool, err)
 				}
