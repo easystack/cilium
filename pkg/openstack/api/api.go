@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	operatorOption "github.com/cilium/cilium/operator/option"
 	"math"
 	"math/rand"
 	"net"
@@ -234,10 +235,16 @@ func NewClient(metrics MetricsAPI, rateLimit float64, burst int, filters map[str
 	}
 
 	go func() {
+		runInterval := 60
+
+		if operatorOption.Config.OpenstackCreatePortsInterval != 0 {
+			runInterval = operatorOption.Config.OpenstackCreatePortsInterval
+		}
+
 		allocator := controller.NewManager()
 		allocator.UpdateController("neutron-port-allocator",
 			controller.ControllerParams{
-				RunInterval: time.Minute,
+				RunInterval: time.Duration(runInterval) * time.Second,
 				DoFunc: func(ctx context.Context) error {
 					c.FillingAvailablePool()
 					return nil
@@ -1301,19 +1308,6 @@ func (c *Client) FillingAvailablePool() {
 				expectedCnt := int(math.Floor(float64(maxIps) * waterMark))
 
 				createCount := expectedCnt - portCntFromNeutron
-				log.Infof("##### ready to fill available pool for %s, create count is %d, expected count is %d, available ips is %d",
-					cpip.Name, createCount, expectedCnt, availableIps)
-
-				if createCount <= 0 {
-					log.Infof("##### no need to create port for pool %s, cause has reached the waterMark.", cpip.Name)
-					if expectedCnt == portCntFromNeutron {
-						err = ipam.UpdateCiliumIPPoolStatus(cpip.Name, "", "", "", true, -1)
-						if err != nil {
-							log.Errorf("update ciliumPodIPPool %s failed, error is %s.", cpip.Name, err)
-						}
-					}
-					return
-				}
 
 				var maxFreePort int
 				if cpip.Spec.MaxFreePort == 0 {
@@ -1325,7 +1319,18 @@ func (c *Client) FillingAvailablePool() {
 				if createCount+availableIps > maxFreePort {
 					createCount = maxFreePort - availableIps
 				}
+
+				log.Infof("##### ready to fill available pool for %s, create count is %d, expected count is %d, available ips is %d",
+					cpip.Name, createCount, expectedCnt, availableIps)
+
 				if createCount <= 0 {
+					if expectedCnt == portCntFromNeutron {
+						err = ipam.UpdateCiliumIPPoolStatus(cpip.Name, nil, -1, true, nil)
+						if err != nil {
+							log.Errorf("update ciliumPodIPPool %s failed, error is %s.", cpip.Name, err)
+						}
+					}
+					log.Infof("##### no need to create port for pool %s, cause has reached the waterMark.", cpip.Name)
 					return
 				}
 
@@ -1340,11 +1345,18 @@ func (c *Client) FillingAvailablePool() {
 					createCount = maxFreePort - availableIps
 				}
 
-				if createCount > DefaultCreatePortsInBulk {
-					opt.CreateCount = DefaultCreatePortsInBulk
+				createInBulk := DefaultCreatePortsInBulk
+
+				if operatorOption.Config.OpenstackCreatePortsStep != 0 {
+					createInBulk = operatorOption.Config.OpenstackCreatePortsStep
+				}
+
+				if createCount > createInBulk {
+					opt.CreateCount = createInBulk
 				} else {
 					opt.CreateCount = createCount
 				}
+
 				mutex.Lock()
 				opts = append(opts, opt)
 				mutex.Unlock()
@@ -1377,7 +1389,7 @@ func (c *Client) RefreshAvailablePool() {
 				}
 
 				if _, exist := c.available[pool]; exist {
-					_ = ipam.UpdateCiliumIPPoolStatus(cpip.Name, "", "", "", false, c.available[pool].size())
+					_ = ipam.UpdateCiliumIPPoolStatus(cpip.Name, nil, c.available[pool].size(), false, nil)
 				}
 			}(cpip.Name)
 		}

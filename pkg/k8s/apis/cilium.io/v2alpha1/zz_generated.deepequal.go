@@ -507,12 +507,6 @@ func (in *IPPoolSpec) DeepEqual(other *IPPoolSpec) bool {
 	if in.Watermark != other.Watermark {
 		return false
 	}
-	if in.FillingInterval != other.FillingInterval {
-		return false
-	}
-	if in.FilingStep != other.FilingStep {
-		return false
-	}
 	if in.MaxFreePort != other.MaxFreePort {
 		return false
 	}
