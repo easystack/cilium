@@ -81,7 +81,6 @@ func (n *Node) PopulateStatusFields(resource *v2.CiliumNode) {
 	n.manager.ForeachInstance(n.node.InstanceID(),
 		func(instanceID, interfaceID string, rev ipamTypes.InterfaceRevision) error {
 			e, ok := rev.Resource.(*eniTypes.ENI)
-			log.Infof("######## Populate Status eni details is %+v", e)
 			if ok {
 				resource.Status.OpenStack.ENIs[interfaceID] = *e.DeepCopy()
 			}

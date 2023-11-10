@@ -704,8 +704,6 @@ func (c *Client) UnassignPrivateIPAddresses(ctx context.Context, eniID string, a
 		log.Errorf("########### Not mach, expected is %s, actual is %s", addresses, releasedIP)
 	}
 
-	log.Errorf("########### origin pairs is %s, new pairs is %s, expected is %s, actual is %s", port.AllowedAddressPairs, allowedAddressPairs, addresses, releasedIP)
-
 	err = c.deletePortAllowedAddressPairs(eniID, allowedAddressPairs)
 	if err != nil {
 		log.Errorf("######## Failed to update port allowed-address-pairs with error: %+v", err)
@@ -749,11 +747,10 @@ func (c *Client) updatePortAllowedAddressPairs(eniID string, pairs []ports.Addre
 	opts := ports.UpdateOpts{
 		AllowedAddressPairs: &pairs,
 	}
-	port, err := ports.Update(c.neutronV2, eniID, opts).Extract()
+	_, err := ports.Update(c.neutronV2, eniID, opts).Extract()
 	if err != nil {
 		return err
 	}
-	log.Errorf("######## port updated is: %+v", port)
 	return nil
 }
 
@@ -762,12 +759,11 @@ func (c *Client) addPortAllowedAddressPairs(eniID string, pairs []ports.AddressP
 	opts := ports.UpdateOpts{
 		AllowedAddressPairs: &pairs,
 	}
-	port, err := ports.AddAllowedAddressPair(c.neutronV2, eniID, opts).Extract()
+	_, err := ports.AddAllowedAddressPair(c.neutronV2, eniID, opts).Extract()
 	if err != nil {
 		log.Errorf("##### Failed to add allowed address pair, error is %s", err)
 		return err
 	}
-	log.Errorf("######## port updated is: %+v", port)
 	return nil
 }
 
@@ -779,11 +775,10 @@ func (c *Client) deletePortAllowedAddressPairs(eniID string, pairs []ports.Addre
 	opts := ports.UpdateOpts{
 		AllowedAddressPairs: &pairs,
 	}
-	port, err := ports.RemoveAllowedAddressPair(c.neutronV2, eniID, opts).Extract()
+	_, err := ports.RemoveAllowedAddressPair(c.neutronV2, eniID, opts).Extract()
 	if err != nil {
 		return err
 	}
-	log.Errorf("######## port updated is: %+v", port)
 	return nil
 }
 
