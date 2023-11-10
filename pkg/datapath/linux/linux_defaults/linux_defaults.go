@@ -43,6 +43,11 @@ const (
 	// RouteMarkMask is the mask required for the route mark value
 	RouteMarkMask = 0xF00
 
+	// RouteMarkHostLegacyRoute is the mark in HostLegacyRouting, can not redirect forward
+	RouteMarkHostLegacyRoute = 0xF0C
+	// RouteMaskHostLegacyRoute is the mask in HostLegacyRouting, can not redirect forward
+	RouteMaskHostLegacyRoute = 0xFFF
+
 	// RouteMarkToProxy is the default route mark to use to indicate
 	// datapath needs to send the packet to the proxy.
 	//

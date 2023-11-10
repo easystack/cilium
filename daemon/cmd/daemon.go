@@ -7,15 +7,18 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/cilium/cilium/pkg/ipam/staticip"
 	"math/big"
 	"net"
 	"net/netip"
 	"os"
+	"os/exec"
 	"runtime"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/cilium/cilium/pkg/ipam/staticip"
+	"github.com/cilium/cilium/pkg/sysctl"
 
 	"github.com/sirupsen/logrus"
 	"github.com/vishvananda/netlink"
@@ -38,7 +41,9 @@ import (
 	linuxdatapath "github.com/cilium/cilium/pkg/datapath/linux"
 	"github.com/cilium/cilium/pkg/datapath/linux/bigtcp"
 	"github.com/cilium/cilium/pkg/datapath/linux/ipsec"
+	"github.com/cilium/cilium/pkg/datapath/linux/linux_defaults"
 	"github.com/cilium/cilium/pkg/datapath/linux/probes"
+	"github.com/cilium/cilium/pkg/datapath/linux/route"
 	linuxrouting "github.com/cilium/cilium/pkg/datapath/linux/routing"
 	"github.com/cilium/cilium/pkg/datapath/loader"
 	datapathOption "github.com/cilium/cilium/pkg/datapath/option"
@@ -1239,6 +1244,13 @@ func newDaemon(ctx context.Context, cleaner *daemonCleanup, params *daemonParams
 		ipsec.StartStaleKeysReclaimer(ctx)
 	}
 
+	if option.Config.EnableIPv4 && option.Config.IPAM == ipamOption.IPAMOpenStack &&
+		option.Config.KubeProxyReplacement == option.KubeProxyReplacementFalse {
+		if err := d.AddHostLegacyRoutingRedirectPolicy(option.Config.DirectRoutingDevice); err != nil {
+			log.WithError(err).Error("Unable to Add HostLegacyRouting")
+		}
+	}
+
 	return &d, restoredEndpoints, nil
 }
 
@@ -1359,6 +1371,35 @@ func (d *Daemon) SendNotification(notification monitorAPI.AgentNotifyMessage) er
 		return nil
 	}
 	return d.monitorAgent.SendEvent(monitorAPI.MessageTypeAgent, notification)
+}
+
+func (d *Daemon) AddHostLegacyRoutingRedirectPolicy(intfName string) error {
+	// sysctl -w net.ipv4.conf.interfaceName.rp_filter=0
+	variableName := fmt.Sprintf("net.ipv4.conf.%s.rp_filter", option.Config.DirectRoutingDevice)
+	if err := sysctl.Write(variableName, "0"); err != nil {
+		return fmt.Errorf("set sysctl %s=0 failed: %s", variableName, err)
+	}
+	// iptables -t mangle -A PREROUTING -i lxc+ -d <ip local control plan> -j MARK --set-mark 0xF01/0xFFF
+	// do not use -I to insert for before the CILIUM_PRE_mangle
+	cmdStr := fmt.Sprintf("iptables -t mangle -A PREROUTING -i lxc+ -d %s -j MARK --set-mark %#08x/%#08x",
+		node.GetK8sNodeIP().String(), linux_defaults.RouteMarkHostLegacyRoute, linux_defaults.RouteMaskHostLegacyRoute)
+	cmd := exec.Command("bash", "-c", cmdStr)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		log.Errorf("====iptables set output: %v err:%v", string(output), err)
+		return err
+	}
+	// ip rule add from all fwmark 0xF01/0xFFF lookup main priority 110<after local, before 111>
+	if err := route.ReplaceRule(route.Rule{
+		Priority: linux_defaults.RulePriorityEgress,
+		Mask:     linux_defaults.RouteMaskHostLegacyRoute,
+		Mark:     linux_defaults.RouteMarkHostLegacyRoute,
+		Table:    route.MainTable,
+		Protocol: linux_defaults.RTProto,
+	}); err != nil {
+		log.Errorf("===Unable to install init ip rule: %s", err)
+		return err
+	}
+	return nil
 }
 
 type endpointMetadataFetcher interface {
