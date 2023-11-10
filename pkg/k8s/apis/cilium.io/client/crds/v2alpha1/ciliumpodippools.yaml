@@ -42,10 +42,6 @@ spec:
             properties:
               cidr:
                 type: string
-              filing-step:
-                type: string
-              filling-interval:
-                type: string
               ipv4:
                 description: IPv4 specifies the IPv4 CIDRs and mask sizes of the pool
                 properties:

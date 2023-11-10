@@ -55,12 +55,6 @@ type IPPoolSpec struct {
 	Watermark string `json:"watermark"`
 
 	// +kubebuilder:validation:Optional
-	FillingInterval string `json:"filling-interval"`
-
-	// +kubebuilder:validation:Optional
-	FilingStep string `json:"filing-step"`
-
-	// +kubebuilder:validation:Optional
 	MaxFreePort int `json:"max-free-port"`
 }
 

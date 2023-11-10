@@ -29,6 +29,10 @@ func init() {
 	option.BindEnv(Vp, operatorOption.OpenStackMaxV4PodIPs)
 	flags.Int(operatorOption.OpenStackMaxV6PodIPs, 100, "Max number of ipv6 pod ips on one vm nic")
 	option.BindEnv(Vp, operatorOption.OpenStackMaxV6PodIPs)
+	flags.Int(operatorOption.OpenstackDefaultCreatePortsStep, 20, "The step every create in bulk per pool")
+	option.BindEnv(Vp, operatorOption.OpenstackDefaultCreatePortsStep)
+	flags.Int(operatorOption.OpenstackDefaultCreatePortsInterval, 60, "The interval between each creation")
+	option.BindEnv(Vp, operatorOption.OpenstackDefaultCreatePortsInterval)
 
 	Vp.BindPFlags(flags)
 }

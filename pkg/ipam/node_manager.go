@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	cilium_v2 "github.com/cilium/cilium/pkg/k8s/apis/cilium.io/v2alpha1"
@@ -260,15 +261,8 @@ func (n *NodeManager) Start(ctx context.Context) error {
 				RunInterval: time.Minute,
 				DoFunc: func(ctx context.Context) error {
 					if syncTime, ok := n.instancesAPIResync(ctx); ok {
-						for _, node := range n.nodes {
-							err := n.SyncMultiPool(node)
-							if err != nil {
-								log.Errorf("node %s syncMultiPool failed, error is %s ", node.name, err)
-							}
-						}
-
+						n.SyncMultiPool(ctx)
 						n.Resync(ctx, syncTime)
-
 						return nil
 					}
 					return nil
@@ -589,129 +583,190 @@ func (n *NodeManager) Resync(ctx context.Context, syncTime time.Time) {
 }
 
 // SyncMultiPool labels the node with "openstack-ip-pool" when a ciliumNode upsert or a k8s node's pool annotation changed
-func (n *NodeManager) SyncMultiPool(node *Node) error {
-	sNode, err := k8sManager.client.CoreV1().Nodes().Get(context.Background(), node.name, v1.GetOptions{})
+func (n *NodeManager) SyncMultiPool(ctx context.Context) {
+	now := time.Now()
+	defer log.Infof("#### sync multipool finished takes %s", time.Since(now))
+
+	k8sNodes, err := k8sManager.client.CoreV1().Nodes().List(ctx, v1.ListOptions{})
 	if err != nil {
-		return fmt.Errorf("warning: get k8s node failed: %v ", err)
+		log.Errorf("failed to list all nodes when sync multi pool, error is %s", err)
+		return
 	}
-	pools := map[string]struct{}{}
 
-	if sNode.Annotations != nil {
-		if pAnnotation := strings.Split(sNode.Annotations[poolAnnotation], ","); len(pAnnotation) > 0 {
-			for _, a := range pAnnotation {
-				pools[a] = struct{}{}
-			}
+	annotations := map[string]string{}
+	for _, item := range k8sNodes.Items {
+		if item.Annotations != nil {
+			annotations[item.Name] = item.Annotations[poolAnnotation]
+		} else {
+			annotations[item.Name] = ""
 		}
 	}
 
-	// for range each pool annotation
-	for p, _ := range pools {
-		// judge whether the cpip exist
-		if _, hasPoolCrd := n.pools[p]; hasPoolCrd {
-			// judge whether the pool has ENI or secondaryIps
-			hasENI := false
-			hasIps := false
-			for _, eni := range node.resource.Status.OpenStack.ENIs {
-				if eni.Pool == p {
-					hasENI = true
-					if len(eni.SecondaryIPSets) > 0 {
-						hasIps = true
-						break
+	poolSpec := map[string]*perPoolSpec{}
+	mutex := sync.Mutex{}
+	poolFinalizer := map[string][]string{}
+
+	for _, cpip := range ListCiliumIPPool() {
+		poolSpec[cpip.Name] = &perPoolSpec{
+			spec: map[string]cilium_v2.ItemSpec{},
+		}
+	}
+
+	sem := semaphore.NewWeighted(100)
+	for _, node := range n.nodes {
+		err := sem.Acquire(ctx, 1)
+		if err != nil {
+			continue
+		}
+		go func(node *Node) {
+			defer sem.Release(1)
+			pools := map[string]struct{}{}
+
+			if anno, exist := annotations[node.name]; exist {
+				if pAnnotation := strings.Split(anno, ","); len(pAnnotation) > 0 {
+					for _, a := range pAnnotation {
+						pools[a] = struct{}{}
 					}
 				}
 			}
 
-			// judge whether the node has homologous crdPool
-			if _, exist := node.pools[Pool(p)]; !exist {
-				if hasIps {
-					// If both ENI and pool annotation exist, create the crdPool and set pool status to Active
-					node.pools[Pool(p)] = NewCrdPool(Pool(p), node, n.releaseExcessIPs, Active)
-					err := UpdateCiliumIPPoolStatus(p, node.name, "Ready", "Created crd pool success.", false, -1)
-					if err != nil {
-						log.Errorf("Update CiliumIPPool status failed, error is %s.", err)
-					}
-					continue
-				}
-
-				if hasENI {
-					node.pools[Pool(p)] = NewCrdPool(Pool(p), node, n.releaseExcessIPs, WaitingForAllocate)
-					err := UpdateCiliumIPPoolStatus(p, node.name, "NotReady", "Pool is not ready, is waiting for allocate.", false, -1)
-					if err != nil {
-						log.Errorf("Update CiliumIPPool status failed, error is %s.", err)
-					}
-					continue
-				}
-
-				// upper pool limit
-				if len(node.pools) == MaxPools {
-					err := UpdateCiliumIPPoolStatus(p, node.name, "NotReady", "The node has reached the upper pool limit.", false, -1)
-					if err != nil {
-						log.Errorf("Update CiliumIPPool status failed, error is %s.", err)
-					}
-					continue
-				}
-
-				limit, ok := limits.Get(node.resource.Spec.OpenStack.InstanceType)
-				if !ok {
-					log.Errorln("limit is not available")
-					continue
-				}
-
-				// upper eni limit
-				if len(node.resource.Status.OpenStack.ENIs) == limit.Adapters {
-					err := UpdateCiliumIPPoolStatus(p, node.name, "NotReady", "The node has reached the upper eni limit.", false, -1)
-					if err != nil {
-						log.Errorf("Update CiliumIPPool status failed, error is %s.", err)
-					}
-					continue
-				}
-
-				// Meet the crdPool creation requirements
-				node.pools[Pool(p)] = NewCrdPool(Pool(p), node, n.releaseExcessIPs, WaitingForAllocate)
-				err := UpdateCiliumIPPoolStatus(p, node.name, "NotReady", "Pool is not ready, is waiting for allocate.", false, -1)
-				if err != nil {
-					log.Errorf("Update CiliumIPPool status failed, error is %s.", err)
-				}
-
-			}
-
-			// rejudge whether the node's crdPool exist
-			if pool, exist := node.pools[Pool(p)]; exist {
-				if hasENI {
-					if hasIps {
-						pool.setPoolStatus(Active)
-					}
-					//  try 3 times when add finalizer flag failed
-					retryCount := 3
-				loop:
-					err := k8sManager.AddFinalizerFlag(p, node.name)
-					if err != nil {
-						if retryCount > 0 {
-							retryCount--
-							goto loop
+			// for range each pool annotation
+			for p, _ := range pools {
+				// judge whether the cpip exist
+				if _, hasPoolCrd := n.pools[p]; hasPoolCrd {
+					// judge whether the pool has ENI or secondaryIps
+					hasENI := false
+					hasIps := false
+					for _, eni := range node.resource.Status.OpenStack.ENIs {
+						if eni.Pool == p {
+							hasENI = true
+							if len(eni.SecondaryIPSets) > 0 {
+								hasIps = true
+								break
+							}
 						}
-						log.Errorf("failed to add finalizer flag %s on ciliumpodippool %s after 3 times retry, error is %s", node.name, p, err)
+					}
+
+					// judge whether the node has homologous crdPool
+					if _, exist := node.pools[Pool(p)]; !exist {
+						if hasIps {
+							// If both ENI and pool annotation exist, create the crdPool and set pool status to Active
+							node.pools[Pool(p)] = NewCrdPool(Pool(p), node, n.releaseExcessIPs, Active)
+
+							if _, exist = poolSpec[p]; exist {
+								poolSpec[p].updatePerPoolSpec(node.name, cilium_v2.ItemSpec{
+									Status: "Ready",
+									Phase:  "Created crd pool success.",
+								})
+							}
+
+							continue
+						}
+
+						if hasENI {
+							node.pools[Pool(p)] = NewCrdPool(Pool(p), node, n.releaseExcessIPs, WaitingForAllocate)
+							if _, exist = poolSpec[p]; exist {
+								poolSpec[p].updatePerPoolSpec(node.name, cilium_v2.ItemSpec{
+									Status: "NotReady",
+									Phase:  "Pool is not ready, is waiting for allocate.",
+								})
+							}
+							continue
+						}
+
+						// upper pool limit
+						if len(node.pools) == MaxPools {
+							if _, exist = poolSpec[p]; exist {
+								poolSpec[p].updatePerPoolSpec(node.name, cilium_v2.ItemSpec{
+									Status: "NotReady",
+									Phase:  "The node has reached the upper pool limit.",
+								})
+							}
+							continue
+						}
+
+						limit, ok := limits.Get(node.resource.Spec.OpenStack.InstanceType)
+						if !ok {
+							log.Errorln("limit is not available")
+							continue
+						}
+
+						// upper eni limit
+						if len(node.resource.Status.OpenStack.ENIs) == limit.Adapters {
+							if _, exist = poolSpec[p]; exist {
+								poolSpec[p].updatePerPoolSpec(node.name, cilium_v2.ItemSpec{
+									Status: "NotReady",
+									Phase:  "The node has reached the upper eni limit.",
+								})
+							}
+							continue
+						}
+
+						// Meet the crdPool creation requirements
+						node.pools[Pool(p)] = NewCrdPool(Pool(p), node, n.releaseExcessIPs, WaitingForAllocate)
+						if _, exist = poolSpec[p]; exist {
+							poolSpec[p].updatePerPoolSpec(node.name, cilium_v2.ItemSpec{
+								Status: "NotReady",
+								Phase:  "Pool is not ready, is waiting for allocate.",
+							})
+						}
+					}
+
+					// rejudge whether the node's crdPool exist
+					if pool, exist := node.pools[Pool(p)]; exist {
+						if hasENI {
+							if hasIps {
+								pool.setPoolStatus(Active)
+								if _, exist = poolSpec[p]; exist {
+									poolSpec[p].updatePerPoolSpec(node.name, cilium_v2.ItemSpec{
+										Status: "Ready",
+										Phase:  "Created crd pool success.",
+									})
+								}
+							}
+							mutex.Lock()
+							poolFinalizer[p] = append(poolFinalizer[p], node.name)
+							mutex.Unlock()
+						}
 					}
 				}
 			}
-		}
+
+			// if the node's crdPool exist, but pool annotation not exist, we should set the pool status to Recycling
+			for p, crdPool := range node.pools {
+				if _, exist := pools[p.String()]; !exist && crdPool.poolStatus() != Delete {
+					crdPool.setPoolStatus(Recycling)
+					if _, exist = poolSpec[p.String()]; exist {
+						poolSpec[p.String()].updatePerPoolSpec(node.name, cilium_v2.ItemSpec{
+							Status: "Ready",
+							Phase:  "Recycle",
+						})
+					}
+				}
+			}
+
+			labels := map[string]string{}
+
+			// Only a pool in Active state can be labeled
+			for name, p := range node.pools {
+				if p.poolStatus() == Active {
+					labels[poolLabel+"/"+string(name)] = "true"
+				}
+			}
+
+			err = k8sManager.LabelNodeWithPool(node.name, labels)
+			if err != nil {
+				log.Errorf("failed to label node %s with pool %s", node.name, err)
+			}
+		}(node)
 	}
 
-	// if the node's crdPool exist, but pool annotation not exist, we should set the pool status to Recycling
-	for p, crdPool := range node.pools {
-		if _, exist := pools[p.String()]; !exist && crdPool.poolStatus() != Delete {
-			crdPool.setPoolStatus(Recycling)
+	sem.Acquire(ctx, n.parallelWorkers)
+
+	for p, spec := range poolSpec {
+		err := UpdateCiliumIPPoolStatus(p, spec.getSpecData(), -1, false, poolFinalizer[p])
+		if err != nil {
+			log.Errorf("failed to update ciliumPodIPPool, error is %s", err)
 		}
 	}
-
-	labels := map[string]string{}
-
-	// Only a pool in Active state can be labeled
-	for name, p := range node.pools {
-		if p.poolStatus() == Active {
-			labels[poolLabel+"/"+string(name)] = "true"
-		}
-	}
-
-	return k8sManager.LabelNodeWithPool(node.name, labels)
 }

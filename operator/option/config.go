@@ -244,6 +244,12 @@ const (
 	// OpenStackDefaultSubnetID allows user to specific subnet for default pool
 	OpenStackDefaultSubnetID = "openstack-default-subnet-id"
 
+	// OpenstackDefaultCreatePortsInterval define the step every create in bulk per pool
+	OpenstackDefaultCreatePortsInterval = "openstack-default-create-ports-interval"
+
+	// OpenstackDefaultCreatePortsStep define the step every create in bulk per pool
+	OpenstackDefaultCreatePortsStep = "openstack-default-create-ports-step"
+
 	// OpenStackSecurityGroupIDs allows user to specific security group pools
 	OpenStackSecurityGroupIDs = "openstack-security-group-ids"
 
@@ -547,14 +553,20 @@ type OperatorConfig struct {
 	// OpenStack allow user to specific subnet for default pool
 	OpenStackDefaultSubnetID string
 
+	// Openstack will filling available pool, the arg defines the quantity every creation
+	OpenstackCreatePortsStep int
+
+	// Openstack will filling available pool, the arg defines the interval between each creation(in seconds)
+	OpenstackCreatePortsInterval int
+
 	// OpenStack allow user to specific security group pools
 	OpenStackSecurityGroupIDs string
 
 	// OpenStack allow user to specific project
 	OpenStackProjectID string
 
-    // OpenStack api http timeout
-    OpenStackHttpTimeout int
+	// OpenStack api http timeout
+	OpenStackHttpTimeout int
 
 	// OpenStack max nics per vm
 	OpenStackMaxNics int
@@ -760,6 +772,8 @@ func (c *OperatorConfig) Populate(vp *viper.Viper) {
 	c.OpenStackProjectID = vp.GetString(OpenStackProjectID)
 	c.OpenStackReleaseExcessIPs = vp.GetBool(OpenStackReleaseExcessIPs)
 	c.OpenStackDefaultSubnetID = vp.GetString(OpenStackDefaultSubnetID)
+	c.OpenstackCreatePortsStep = vp.GetInt(OpenstackDefaultCreatePortsStep)
+	c.OpenstackCreatePortsInterval = vp.GetInt(OpenstackDefaultCreatePortsInterval)
 	c.OpenStackSecurityGroupIDs = vp.GetString(OpenStackSecurityGroupIDs)
 	c.OpenStackHttpTimeout = vp.GetInt(OpenStackHttpTimeout)
 	c.OpenStackMaxNics = vp.GetInt(OpenStackMaxNics)

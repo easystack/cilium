@@ -528,42 +528,18 @@ func (extraManager) CreateDefaultPool(subnets ipamTypes.SubnetMap) {
 	log.Warnf("The creation of default pool has been ignored, due to no subnet-id set.")
 }
 
-func (extraManager) AddFinalizerFlag(pool string, node string) error {
+func (extraManager) AddFinalizerFlag(pool string, nodes []string) error {
 	ipPool, err := k8sManager.GetCiliumPodIPPool(pool)
 	if err != nil {
 		return err
 	}
 	ipPool = ipPool.DeepCopy()
-	needUpdate := true
-	for _, finalizer := range ipPool.Finalizers {
-		if finalizer == node {
-			needUpdate = false
-			break
-		}
-	}
 
-	if ipPool.Status.Items == nil {
-		ipPool.Status.Items = map[string]v2alpha1.ItemSpec{}
-	}
+	ipPool.Finalizers = nodes
 
-	if needUpdate {
-		ipPool.Finalizers = append(ipPool.Finalizers, node)
-
-	}
-
-	if spec, hasItem := ipPool.Status.Items[node]; !hasItem || (hasItem && spec.Status != CiliumPodIPPoolNodeReadyStatus) {
-		ipPool.Status.Items[node] = v2alpha1.ItemSpec{
-			Phase:  CreatePoolSuccessPhase,
-			Status: CiliumPodIPPoolNodeReadyStatus,
-		}
-		needUpdate = true
-	}
-
-	if needUpdate {
-		_, err = k8sManager.alphaClient.CiliumPodIPPools().Update(context.TODO(), ipPool, v1.UpdateOptions{})
-		if err != nil {
-			return err
-		}
+	_, err = k8sManager.alphaClient.CiliumPodIPPools().Update(context.TODO(), ipPool, v1.UpdateOptions{})
+	if err != nil {
+		return err
 	}
 
 	return nil
@@ -625,37 +601,48 @@ func SyncPoolToAPIServer(subnets ipamTypes.SubnetMap) {
 
 	}
 }
-func UpdateCiliumIPPoolStatus(pool string, node string, status, phase string, maxPoolReached bool, curFreePort int) error {
+func UpdateCiliumIPPoolStatus(pool string, items map[string]v2alpha1.ItemSpec, curFreePort int, reachedMaxPorts bool, finalizerFlag []string) error {
 	ipPool, err := k8sManager.GetCiliumPodIPPool(pool)
 	if err != nil {
 		return err
 	}
 
 	ipPool = ipPool.DeepCopy()
-	if maxPoolReached {
-		ipPool.Status.MaxPortsReached = maxPoolReached
+
+	if items != nil {
+		ipPool.Status.Items = items
 	}
-	if node != "" {
-		m := map[string]v2alpha1.ItemSpec{}
-		if ipPool.Status.Items != nil {
-			m = ipPool.Status.Items
-		}
-
-		m[node] = v2alpha1.ItemSpec{
-			Phase:  phase,
-			Status: status,
-		}
-
-		ipPool.Status.Items = m
+	if finalizerFlag != nil {
+		ipPool.Finalizers = finalizerFlag
 	}
 
 	if curFreePort != -1 {
 		ipPool.Status.CurrentFreePort = curFreePort
 	}
 
+	if reachedMaxPorts {
+		ipPool.Status.MaxPortsReached = true
+	}
+
 	_, err = k8sManager.alphaClient.CiliumPodIPPools().Update(context.TODO(), ipPool, v1.UpdateOptions{})
 	if err != nil {
-		return err
+		if items == nil && finalizerFlag == nil {
+			return err
+		}
+		ipPool, err = k8sManager.alphaClient.CiliumPodIPPools().Get(context.TODO(), pool, v1.GetOptions{})
+		if err != nil {
+			if items != nil {
+				ipPool.Status.Items = items
+			}
+			if finalizerFlag != nil {
+				ipPool.Finalizers = finalizerFlag
+			}
+			_, err = k8sManager.alphaClient.CiliumPodIPPools().Update(context.TODO(), ipPool, v1.UpdateOptions{})
+			if err != nil {
+				log.Errorf("back to get and update ciliumPodIPPool failed, error is %s", err)
+				return err
+			}
+		}
 	}
 
 	return nil
@@ -686,4 +673,20 @@ func (extraManager) UpdateCiliumStaticIP(csip *v2alpha1.CiliumStaticIP, status, 
 			csip.Spec.IP, podFullName, csip.Spec.NodeName, err)
 		return
 	}
+}
+
+type perPoolSpec struct {
+	mutex sync.Mutex
+	spec  map[string]v2alpha1.ItemSpec
+}
+
+func (poolSpec *perPoolSpec) updatePerPoolSpec(node string, spec v2alpha1.ItemSpec) {
+	poolSpec.mutex.Lock()
+	poolSpec.spec[node] = spec
+	poolSpec.mutex.Unlock()
+	return
+}
+
+func (poolSpec *perPoolSpec) getSpecData() map[string]v2alpha1.ItemSpec {
+	return poolSpec.spec
 }
