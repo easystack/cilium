@@ -195,10 +195,12 @@ func SetupLogging(loggers []string, logOpts LogOptions, tag string, debug bool) 
 // GetFormatter returns a configured logrus.Formatter with some specific values
 // we want to have
 func GetFormatter(format LogFormat) logrus.Formatter {
+	time.Local, _ = time.LoadLocation("Asia/Shanghai")
 	switch format {
 	case LogFormatText:
 		return &logrus.TextFormatter{
-			DisableTimestamp: true,
+			DisableTimestamp: false,
+			TimestampFormat:  time.RFC3339Nano,
 			DisableColors:    true,
 		}
 	case LogFormatJSON:

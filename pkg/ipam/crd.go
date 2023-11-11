@@ -7,15 +7,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/cilium/cilium/pkg/ipam/staticip"
-	"github.com/cilium/cilium/pkg/k8s/apis/cilium.io/v2alpha1"
-	"github.com/vishvananda/netlink"
-	"golang.org/x/sys/unix"
 	"net"
 	"reflect"
 	"strconv"
 	"sync"
 	"time"
+
+	"github.com/cilium/cilium/pkg/ipam/staticip"
+	"github.com/cilium/cilium/pkg/k8s/apis/cilium.io/v2alpha1"
+	"github.com/vishvananda/netlink"
+	"golang.org/x/sys/unix"
 
 	"github.com/sirupsen/logrus"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -148,10 +149,10 @@ func newNodeStore(nodeName string, conf Configuration, owner Owner, clientset cl
 						valid = true
 						newNode = newNode.DeepCopy()
 						for id, v := range newNode.Status.OpenStack.ENIs {
-							log.Warningf("######### New cilium node %s: eni %s is %+v ", newNode.Name, id, v)
+							log.Infof("######### New cilium node %s: eni %s is %+v ", newNode.Name, id, v)
 						}
 						for id, v := range oldNode.Status.OpenStack.ENIs {
-							log.Warningf("!!!!!!!!! Old cilium node %s: eni %s is %+v ", oldNode.Name, id, v)
+							log.Infof("!!!!!!!!! Old cilium node %s: eni %s is %+v ", oldNode.Name, id, v)
 						}
 						if oldNode.DeepEqual(newNode) {
 							// The UpdateStatus call in refreshNode requires an up-to-date
