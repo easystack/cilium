@@ -395,7 +395,6 @@ func (n *NodeDiscovery) UpdateCiliumNodeResource() {
 				}
 				log.WithError(err).Fatal("Unable to create CiliumNode resource")
 			} else {
-				log.Errorf("#################  node spec is %+v", nodeResource.Spec.OpenStack)
 				log.Info("Successfully created CiliumNode resource")
 				return
 			}
