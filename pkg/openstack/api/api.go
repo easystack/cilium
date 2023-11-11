@@ -69,7 +69,8 @@ const (
 
 	MaxCreatePortsInBulk     = 100
 	DefaultCreatePortsInBulk = 20
-	DefaultMaxCreatePort     = 2048
+	DefaultMaxCreatePort     = 1024
+	DefaultCPIPWatermark     = "0.01"
 )
 
 const (
