@@ -5,8 +5,9 @@ package ipam
 
 import (
 	"errors"
-	"github.com/vishvananda/netlink"
 	"net"
+
+	"github.com/vishvananda/netlink"
 
 	ciliumv2 "github.com/cilium/cilium/pkg/k8s/apis/cilium.io/v2"
 	"github.com/cilium/cilium/pkg/logging/logfields"
@@ -17,7 +18,8 @@ import (
 
 func configureOpenStackENIs(oldNode, newNode *ciliumv2.CiliumNode, mtuConfig MtuConfiguration) error {
 	if oldNode != nil && oldNode.Status.OpenStack.ENIs != nil && newNode.Status.OpenStack.ENIs != nil {
-		log.Errorf("############ configure openstack enis: oldNode is %+v, newNode is %+v", oldNode.Status.OpenStack.ENIs, newNode.Status.OpenStack.ENIs)
+		log.Infof("configure openstack enis: oldNode is %+v, ", oldNode.Status.OpenStack.ENIs)
+		log.Infof("########################  newNode is %+v", newNode.Status.OpenStack.ENIs)
 	}
 	var (
 		existingENIByName map[string]eniTypes.ENI
@@ -29,7 +31,7 @@ func configureOpenStackENIs(oldNode, newNode *ciliumv2.CiliumNode, mtuConfig Mtu
 	}
 
 	for id, eni := range newNode.Status.OpenStack.ENIs {
-		log.Errorf("############ eni from newNode is %+v", eni)
+		log.Infof("eni from newNode is %v:%+v", id, eni)
 
 		//(fixme) judge to skip primary interface if eni has no pool attribute
 		//instead of utils.IsExcludedByTags(eni.Tags) as workaround for #EAS-119284
@@ -41,7 +43,7 @@ func configureOpenStackENIs(oldNode, newNode *ciliumv2.CiliumNode, mtuConfig Mtu
 			log.Infof("Add address for eni %s", id)
 			addedENIByMac[eni.MAC] = eniDeviceConfig{
 				name: eni.ID,
-				ip: net.ParseIP(eni.IP),
+				ip:   net.ParseIP(eni.IP),
 			}
 
 		}
