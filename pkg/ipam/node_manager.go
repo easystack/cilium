@@ -261,7 +261,7 @@ func (n *NodeManager) Start(ctx context.Context) error {
 				RunInterval: time.Minute,
 				DoFunc: func(ctx context.Context) error {
 					if syncTime, ok := n.instancesAPIResync(ctx); ok {
-						n.SyncMultiPool(ctx)
+						n.SyncMultiPool(ctx, 100)
 						n.Resync(ctx, syncTime)
 						return nil
 					}
@@ -583,7 +583,7 @@ func (n *NodeManager) Resync(ctx context.Context, syncTime time.Time) {
 }
 
 // SyncMultiPool labels the node with "openstack-ip-pool" when a ciliumNode upsert or a k8s node's pool annotation changed
-func (n *NodeManager) SyncMultiPool(ctx context.Context) {
+func (n *NodeManager) SyncMultiPool(ctx context.Context, parallelWorkers int64) {
 	now := time.Now()
 	defer log.Infof("#### sync multipool finished takes %s", time.Since(now))
 
@@ -612,7 +612,7 @@ func (n *NodeManager) SyncMultiPool(ctx context.Context) {
 		}
 	}
 
-	sem := semaphore.NewWeighted(100)
+	sem := semaphore.NewWeighted(parallelWorkers)
 	for _, node := range n.nodes {
 		err := sem.Acquire(ctx, 1)
 		if err != nil {
@@ -761,7 +761,7 @@ func (n *NodeManager) SyncMultiPool(ctx context.Context) {
 		}(node)
 	}
 
-	sem.Acquire(ctx, n.parallelWorkers)
+	sem.Acquire(ctx, parallelWorkers)
 
 	for p, spec := range poolSpec {
 		err := UpdateCiliumIPPoolStatus(p, spec.getSpecData(), -1, false, poolFinalizer[p])
