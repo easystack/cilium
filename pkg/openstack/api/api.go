@@ -69,8 +69,6 @@ const (
 
 	MaxCreatePortsInBulk     = 100
 	DefaultCreatePortsInBulk = 20
-	DefaultMaxCreatePort     = 1024
-	DefaultCPIPWatermark     = "0.01"
 )
 
 const (
@@ -1295,7 +1293,7 @@ func (c *Client) FillingAvailablePool() {
 
 				var maxFreePort int
 				if cpip.Spec.MaxFreePort == 0 {
-					maxFreePort = DefaultMaxCreatePort
+					maxFreePort = ipam.DefaultMaxCreatePort
 				} else {
 					maxFreePort = cpip.Spec.MaxFreePort
 				}
