@@ -119,6 +119,9 @@ func (a *poolAvailable) get(num int) []ports.Port {
 	if ava < num {
 		num = ava
 	}
+	if num == 0 {
+		return []ports.Port{}
+	}
 	log.Debugf("##### before get, pool size is %d", len(a.port))
 	dest := make([]ports.Port, num)
 	ps := a.port[:num]
@@ -675,10 +678,10 @@ func (c *Client) AssignPrivateIPAddresses(ctx context.Context, eniID string, toA
 
 // UnassignPrivateIPAddresses unassign specified IP addresses from ENI
 // should not provide Primary IP
-func (c *Client) UnassignPrivateIPAddresses(ctx context.Context, eniID string, addresses []string, pool string) (isEmpty bool, err error) {
+func (c *Client) UnassignPrivateIPAddresses(ctx context.Context, eniID string, addresses []string, pool string) (err error) {
 
 	if pool == "" {
-		return false, errors.New("no pool specified, can not unAssign ")
+		return errors.New("no pool specified, can not unAssign ")
 	}
 
 	log.Errorf("Do Unassign ip addresses for nic %s, addresses to release is %s", eniID, addresses)
@@ -686,7 +689,7 @@ func (c *Client) UnassignPrivateIPAddresses(ctx context.Context, eniID string, a
 	port, err := c.getPort(eniID)
 	if err != nil {
 		log.Errorf("######## Failed to get port: %s, with error %s", eniID, err)
-		return false, err
+		return err
 	}
 
 	networkId := port.NetworkID
@@ -694,16 +697,12 @@ func (c *Client) UnassignPrivateIPAddresses(ctx context.Context, eniID string, a
 	var releasedIP []string
 
 	for _, pair := range port.AllowedAddressPairs {
-		release := false
 		for _, ip := range addresses {
 			if pair.IPAddress == ip {
-				release = true
 				releasedIP = append(releasedIP, ip)
+				allowedAddressPairs = append(allowedAddressPairs, pair)
 				break
 			}
-		}
-		if release {
-			allowedAddressPairs = append(allowedAddressPairs, pair)
 		}
 	}
 
@@ -714,10 +713,7 @@ func (c *Client) UnassignPrivateIPAddresses(ctx context.Context, eniID string, a
 	err = c.deletePortAllowedAddressPairs(eniID, allowedAddressPairs)
 	if err != nil {
 		log.Errorf("######## Failed to update port allowed-address-pairs with error: %+v", err)
-		if err != nil {
-			log.Errorf("######## Failed to rollback to delete port with error: %+v", err)
-		}
-		return false, err
+		return err
 	}
 
 	poolDeviceId := AvailablePoolFakeDeviceID + pool
@@ -738,15 +734,7 @@ func (c *Client) UnassignPrivateIPAddresses(ctx context.Context, eniID string, a
 			}
 		}
 	}
-	port, err = c.getPort(eniID)
-	if err != nil {
-		return false, err
-	}
-	if len(port.AllowedAddressPairs) == 0 {
-		return true, nil
-	}
-
-	return false, nil
+	return nil
 }
 
 // updatePortAllowedAddressPairs to assign secondary ip address
@@ -1376,17 +1364,17 @@ func (c *Client) RefreshAvailablePool() {
 	for _, cpip := range cpips {
 		if cpip.Status.Active {
 			wg.Add(1)
-			go func(pool string) {
+			go func(cpip *v2alpha1.CiliumPodIPPool) {
 				defer wg.Done()
-				err := c.describeNetworkInterfacesByAvailablePool(pool, cpip.Spec.SubnetId)
+				err := c.describeNetworkInterfacesByAvailablePool(cpip.Name, cpip.Spec.SubnetId)
 				if err != nil {
-					log.Errorf("###### Failed to refresh availble pool for %s, error is %s.", pool, err)
+					log.Errorf("###### Failed to refresh availble pool for %s, error is %s.", cpip.Name, err)
 				}
 
-				if _, exist := c.available[pool]; exist {
-					_ = ipam.UpdateCiliumIPPoolStatus(cpip.Name, nil, c.available[pool].size(), false, nil)
+				if _, exist := c.available[cpip.Name]; exist {
+					_ = ipam.UpdateCiliumIPPoolStatus(cpip.Name, nil, c.available[cpip.Name].size(), false, nil)
 				}
-			}(cpip.Name)
+			}(cpip)
 		}
 	}
 	wg.Wait()
