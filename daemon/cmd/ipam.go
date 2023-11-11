@@ -381,7 +381,7 @@ func (d *Daemon) allocateIngressIPs() error {
 				if ingressRouting, err := parseRoutingInfo(result); err != nil {
 					log.WithError(err).Warn("Unable to allocate ingress information for ENI")
 				} else {
-					log.Errorf("####################  ipam Configure")
+					log.Info("####################  ipam Configure")
 					if err := ingressRouting.Configure(
 						result.IP,
 						d.mtuConfig.GetDeviceMTU(),
