@@ -6,7 +6,6 @@ package ipam
 import (
 	"context"
 	"fmt"
-	"github.com/cilium/cilium/pkg/openstack/api"
 	"strings"
 	"sync"
 	"time"
@@ -57,6 +56,9 @@ const (
 	defaultAssignTimeOut           = time.Minute * 4
 	defaultInUseTimeOut            = time.Minute * 2
 	defaultWaitingForAssignTimeOut = time.Minute * 1
+
+	DefaultMaxCreatePort     = 1024
+	DefaultCPIPWatermark     = "0.01"
 )
 
 const (
@@ -594,10 +596,10 @@ func SyncPoolToAPIServer(subnets ipamTypes.SubnetMap) {
 				newPool.Spec.CIDR = subnet.CIDR.String()
 				newPool.Status.Active = true
 				if newPool.Spec.Watermark == "" {
-					newPool.Spec.Watermark = api.DefaultCPIPWatermark
+					newPool.Spec.Watermark = DefaultCPIPWatermark
 				}
 				if newPool.Spec.MaxFreePort == 0 {
-					newPool.Spec.MaxFreePort = api.DefaultMaxCreatePort
+					newPool.Spec.MaxFreePort = DefaultMaxCreatePort
 				}
 				_, err := k8sManager.alphaClient.CiliumPodIPPools().Update(context.TODO(), newPool, v1.UpdateOptions{})
 				if err != nil {
