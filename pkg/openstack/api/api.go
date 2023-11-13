@@ -609,7 +609,7 @@ func (c *Client) AssignPrivateIPAddresses(ctx context.Context, eniID string, toA
 	var pids []string
 
 	if len(ps) != 0 {
-		log.Infof("####### ready to allocate ips for eni %s, ports: %+v", eniID, ps)
+		log.Infof("####### ready to allocate %d ips for eni %s, get %d ports from available", toAllocate, eniID, len(ps))
 		for _, p := range ps {
 			if len(p.FixedIPs) == 0 {
 				log.Errorf("##### ops! no fixed ip found on port %s", p.ID)
@@ -624,7 +624,7 @@ func (c *Client) AssignPrivateIPAddresses(ctx context.Context, eniID string, toA
 			}
 		}
 
-		log.Infof("######## Do Assign ip addresses for nic %s, count is %d", eniID, toAllocate)
+		log.Infof("######## Do Assign ip addresses for nic %s, pool is %s, count is %d", eniID, pool, len(portsToUpdate))
 		recordTime := time.Now()
 		for _, p := range portsToUpdate {
 			portName := fmt.Sprintf(PodInterfaceName+"-%s", randomString(10))
@@ -668,7 +668,7 @@ func (c *Client) AssignPrivateIPAddresses(ctx context.Context, eniID string, toA
 			return nil, err
 		}
 	} else {
-		log.Errorf("######## No need to add allowed address pairs %+v", pairs)
+		log.Infof("######## No need to add allowed address pairs %+v", pairs)
 		return []string{}, errors.New("no ip available")
 	}
 

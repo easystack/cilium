@@ -148,7 +148,7 @@ type crdPool struct {
 // returns instanceMutated which tracks if state changed with the cloud provider and is used
 // to determine if IPAM pool maintainer trigger func needs to be invoked.
 func (p *crdPool) maintainCRDIPPool(ctx context.Context) (poolMutated bool, err error) {
-	log.Errorf("@@@@@@@@@@@@ maintainCRDIPPool pool %s,node %s", p.name, p.node.name)
+	log.Infof("####### maintainCRDIPPool pool %s,node %s", p.name, p.node.name)
 	if p.status == Active || p.status == WaitingForAllocate {
 		a, err := p.determinePoolMaintenanceAction()
 		if err != nil {
