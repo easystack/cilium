@@ -393,6 +393,12 @@ func (p *crdPool) recalculate(allocate ipamTypes.AllocationMap, stats ipamStats.
 //
 // n.mutex must be held when calling this function
 func (p *crdPool) getPreAllocate() int {
+
+	ipPool, err := k8sManager.GetCiliumPodIPPool(p.name.String())
+	if err == nil && ipPool.Spec.NodePreAllocate > 0 {
+		return ipPool.Spec.NodePreAllocate
+	}
+
 	if p.node.resource.Spec.IPAM.PreAllocate != 0 {
 		return p.node.resource.Spec.IPAM.PreAllocate
 	}
@@ -403,6 +409,10 @@ func (p *crdPool) getPreAllocate() int {
 //
 // n.mutex must be held when calling this function
 func (p *crdPool) getMaxAboveWatermark() int {
+	ipPool, err := k8sManager.GetCiliumPodIPPool(p.name.String())
+	if err == nil && ipPool.Spec.NodeMaxAboveWatermark > 0 {
+		return ipPool.Spec.NodePreAllocate
+	}
 	return p.node.resource.Spec.IPAM.MaxAboveWatermark
 }
 

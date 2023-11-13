@@ -86,6 +86,10 @@ spec:
                 type: object
               max-free-port:
                 type: integer
+              node-max-above-watermark:
+                type: integer
+              node-pre-allocate:
+                type: integer
               subnet-id:
                 type: string
                 x-kubernetes-validations:

@@ -510,6 +510,12 @@ func (in *IPPoolSpec) DeepEqual(other *IPPoolSpec) bool {
 	if in.MaxFreePort != other.MaxFreePort {
 		return false
 	}
+	if in.NodeMaxAboveWatermark != other.NodeMaxAboveWatermark {
+		return false
+	}
+	if in.NodePreAllocate != other.NodePreAllocate {
+		return false
+	}
 
 	return true
 }
