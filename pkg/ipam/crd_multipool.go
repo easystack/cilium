@@ -411,7 +411,7 @@ func (p *crdPool) getPreAllocate() int {
 func (p *crdPool) getMaxAboveWatermark() int {
 	ipPool, err := k8sManager.GetCiliumPodIPPool(p.name.String())
 	if err == nil && ipPool.Spec.NodeMaxAboveWatermark > 0 {
-		return ipPool.Spec.NodePreAllocate
+		return ipPool.Spec.NodeMaxAboveWatermark
 	}
 	return p.node.resource.Spec.IPAM.MaxAboveWatermark
 }
