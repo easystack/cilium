@@ -321,7 +321,7 @@ func calculateNeededIPs(availableIPs, usedIPs, preAllocate, minAllocate, maxAllo
 	}
 
 	if maxAboveWatermark > 0 {
-		if usedIPs <= maxAboveWatermark - preAllocate {
+		if usedIPs <= maxAboveWatermark-preAllocate {
 			neededIPs = maxAboveWatermark - availableIPs
 		} else {
 			neededIPs = usedIPs + preAllocate - availableIPs
@@ -630,73 +630,6 @@ type ReleaseAction struct {
 type maintenanceAction struct {
 	allocation *AllocationAction
 	release    *ReleaseAction
-}
-
-func (n *Node) determineMaintenanceAction() (*maintenanceAction, error) {
-	var err error
-
-	a := &maintenanceAction{}
-
-	scopedLog := n.logger()
-	stats := n.Stats()
-
-	scopedLog.Infof("######### stats is %+v", stats)
-	// Validate that the node still requires addresses to be released, the
-	// request may have been resolved in the meantime.
-	if n.manager.releaseExcessIPs && stats.ExcessIPs > 0 {
-		a.release = n.ops.PrepareIPRelease(stats.ExcessIPs, scopedLog, "")
-		return a, nil
-	}
-
-	// Validate that the node still requires addresses to be allocated, the
-	// request may have been resolved in the meantime.
-	if stats.NeededIPs == 0 {
-		return nil, nil
-	}
-
-	a.allocation, err = n.ops.PrepareIPAllocation(scopedLog, "")
-	if err != nil {
-		return nil, err
-	}
-
-	surgeAllocate := 0
-	numPendingPods, err := getPendingPodCount(n.name)
-	if err != nil {
-		if n.logLimiter.Allow() {
-			scopedLog.WithError(err).Warningf("Unable to compute pending pods, will not surge-allocate")
-		}
-	} else if numPendingPods > stats.NeededIPs {
-		surgeAllocate = numPendingPods - stats.NeededIPs
-	}
-
-	n.mutex.RLock()
-	// handleIPAllocation() takes a min of MaxIPsToAllocate and IPs available for allocation on the interface.
-	// This makes sure we don't try to allocate more than what's available.
-	a.allocation.MaxIPsToAllocate = stats.NeededIPs + n.getMaxAboveWatermark() + surgeAllocate
-	n.mutex.RUnlock()
-
-	if a.allocation != nil {
-		n.mutex.Lock()
-		n.stats.RemainingInterfaces = a.allocation.InterfaceCandidates + a.allocation.EmptyInterfaceSlots
-		stats = n.stats
-		n.mutex.Unlock()
-		scopedLog = scopedLog.WithFields(logrus.Fields{
-			"selectedInterface":      a.allocation.InterfaceID,
-			"selectedPoolID":         a.allocation.PoolID,
-			"maxIPsToAllocate":       a.allocation.MaxIPsToAllocate,
-			"availableForAllocation": a.allocation.AvailableForAllocation,
-			"emptyInterfaceSlots":    a.allocation.EmptyInterfaceSlots,
-		})
-	}
-
-	scopedLog.WithFields(logrus.Fields{
-		"available":           stats.AvailableIPs,
-		"used":                stats.UsedIPs,
-		"neededIPs":           stats.NeededIPs,
-		"remainingInterfaces": stats.RemainingInterfaces,
-	}).Info("Resolving IP deficit of node")
-
-	return a, nil
 }
 
 // removeStaleReleaseIPs Removes stale entries in local n.ipReleaseStatus. Once the handshake is complete agent would

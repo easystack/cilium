@@ -244,7 +244,7 @@ func (p *crdPool) determinePoolMaintenanceAction() (a *maintenanceAction, err er
 
 	// handleIPAllocation() takes a min of MaxIPsToAllocate and IPs available for allocation on the interface.
 	// This makes sure we don't try to allocate more than what's available.
-	a.allocation.MaxIPsToAllocate = stats.NeededIPs + p.node.getMaxAboveWatermark() + surgeAllocate
+	a.allocation.MaxIPsToAllocate = stats.NeededIPs + surgeAllocate
 
 	if a.allocation != nil {
 		statistic := p.stats
