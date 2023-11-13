@@ -56,6 +56,12 @@ type IPPoolSpec struct {
 
 	// +kubebuilder:validation:Optional
 	MaxFreePort int `json:"max-free-port"`
+
+	// +kubebuilder:validation:Optional
+	NodeMaxAboveWatermark int `json:"node-max-above-watermark"`
+
+	// +kubebuilder:validation:Optional
+	NodePreAllocate int `json:"node-pre-allocate"`
 }
 
 // IPPoolStatus describe the status of the nodes which uses the pool
