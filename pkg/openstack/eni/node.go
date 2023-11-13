@@ -289,7 +289,6 @@ func (n *Node) PrepareIPAllocation(scopedLog *logrus.Entry, pool ipam.Pool) (*ip
 			}
 		}
 
-		scopedLog.Infof("@@@@@@@@@@@@@@@@ Do prepare ip allocation for node: %s, n is %+v, eni type is %s, detail is %+v", n.node.InstanceID(), n, e.Type, e)
 		scopedLog.WithFields(logrus.Fields{
 			fieldENIID:  e.ID,
 			"ipv4Limit": l.IPv4,
@@ -297,7 +296,6 @@ func (n *Node) PrepareIPAllocation(scopedLog *logrus.Entry, pool ipam.Pool) (*ip
 		}).Debug("Considering ENI for allocation")
 
 		if utils.IsExcludedByTags(e.Tags) {
-			scopedLog.Infof("!!!!!!!!!!!! ENI %s is excluded by tags in PrepareIPAllocation func", e.ID)
 			continue
 		}
 
@@ -333,7 +331,6 @@ func (n *Node) PrepareIPAllocation(scopedLog *logrus.Entry, pool ipam.Pool) (*ip
 
 // AllocateIPs performs the ENI allocation operation
 func (n *Node) AllocateIPs(ctx context.Context, a *ipam.AllocationAction, pool ipam.Pool) error {
-	log.Infof("@@@@@@@@@@@@@@@@@@@ Do Allocate IPs..... for node %s", n.node.InstanceID())
 	_, err := n.manager.api.AssignPrivateIPAddresses(ctx, a.InterfaceID, a.AvailableForAllocation, pool.String())
 	return err
 }
@@ -363,7 +360,6 @@ func (n *Node) PrepareIPRelease(excessIPs int, scopedLog *logrus.Entry, pool ipa
 		}
 
 		if utils.IsExcludedByTags(e.Tags) {
-			scopedLog.Infof("!!!!!!!!!!!! ENI %s is excluded by tags in PrepareIPRelease func", e.ID)
 			continue
 		}
 
@@ -387,7 +383,7 @@ func (n *Node) PrepareIPRelease(excessIPs int, scopedLog *logrus.Entry, pool ipa
 			fieldENIID:       e.ID,
 			"excessIPs":      excessIPs,
 			"freeOnENICount": freeOnENICount,
-		}).Debug("ENI has unused IPs that can be released")
+		}).Infof("ENI has unused IPs that can be released")
 		maxReleaseOnENI := math.IntMin(freeOnENICount, excessIPs)
 
 		r.InterfaceID = eid
