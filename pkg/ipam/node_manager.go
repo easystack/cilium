@@ -723,6 +723,14 @@ func (n *NodeManager) SyncMultiPool(ctx context.Context, parallelWorkers int64) 
 										Phase:  "Created crd pool success.",
 									})
 								}
+							} else {
+								pool.setPoolStatus(WaitingForAllocate)
+								if _, exist = poolSpec[p]; exist {
+									poolSpec[p].updatePerPoolSpec(node.name, cilium_v2.ItemSpec{
+										Status: "NotReady",
+										Phase:  "Pool is not ready, is waiting for allocate.",
+									})
+								}
 							}
 							mutex.Lock()
 							poolFinalizer[p] = append(poolFinalizer[p], node.name)
