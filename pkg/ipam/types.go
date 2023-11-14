@@ -151,15 +151,17 @@ func (p Pool) String() string {
 }
 
 func (p Pool) SubnetId() string {
-	if pool := k8sManager.nodeManager.pools[p.String()]; pool != nil {
-		return pool.Spec.SubnetId
+	ipPool, err := k8sManager.GetCiliumPodIPPool(p.String())
+	if err == nil {
+		return ipPool.Spec.SubnetId
 	}
 	return ""
 }
 
 func (p Pool) VPCId() string {
-	if pool := k8sManager.nodeManager.pools[p.String()]; pool != nil {
-		return pool.Spec.VPCId
+	ipPool, err := k8sManager.GetCiliumPodIPPool(p.String())
+	if err == nil {
+		return ipPool.Spec.VPCId
 	}
 	return ""
 }
