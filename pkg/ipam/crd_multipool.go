@@ -295,7 +295,7 @@ func (p *crdPool) handleMultiPoolIPAllocation(ctx context.Context, a *maintenanc
 		scopedLog.WithFields(logrus.Fields{
 			"selectedInterface": a.allocation.InterfaceID,
 			"ipsToAllocate":     a.allocation.AvailableForAllocation,
-		}).WithError(err).Warning("Unable to assign additional IPs to interface, will create new interface")
+		}).WithError(err).Warning("Unable to assign additional IPs to interface, waiting for filling more available ports.")
 
 		return false, err
 	}

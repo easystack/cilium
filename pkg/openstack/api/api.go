@@ -389,7 +389,7 @@ func newIdentityV3ClientOrDie(p *gophercloud.ProviderClient) (*gophercloud.Servi
 // instanceMap
 func (c *Client) GetInstances(ctx context.Context, subnets ipamTypes.SubnetMap, azs []string) (*ipamTypes.InstanceMap, error) {
 	instances := ipamTypes.NewInstanceMap()
-	log.Errorf("######## Do Get instances")
+	log.Debug("######## Do Get instances")
 	var networkInterfaces []ports.Port
 	var err error
 
@@ -521,8 +521,6 @@ func (c *Client) GetSecurityGroups(ctx context.Context) (types.SecurityGroupMap,
 
 // CreateNetworkInterface creates an ENI with the given parameters
 func (c *Client) CreateNetworkInterface(ctx context.Context, subnetID, netID, instanceID string, groups []string, pool string) (string, *eniTypes.ENI, error) {
-	log.Errorf("######## Do create interface subnetid is: %s, networkid is: %s", subnetID, netID)
-
 	opt := PortCreateOpts{
 		Name:        fmt.Sprintf(VMInterfaceName+"-%s-%s", pool, randomString(10)),
 		NetworkID:   netID,
@@ -536,7 +534,7 @@ func (c *Client) CreateNetworkInterface(ctx context.Context, subnetID, netID, in
 		sgs := strings.Split(strings.ReplaceAll(c.filters[SecurityGroupIDs], " ", ""), ",")
 		opt.SecurityGroups = &sgs
 	}
-
+	log.Infof("######## Do create interface subnetid is: %s, networkid is: %s, security groups is: %s ", subnetID, netID, c.filters[SecurityGroupIDs])
 	eni, err := c.createPort(opt)
 	if err != nil {
 		return "", nil, err
@@ -568,7 +566,7 @@ func (c *Client) ListNetworkInterface(ctx context.Context, instanceID string) ([
 
 // AttachNetworkInterface attaches a previously created ENI to an instance
 func (c *Client) AttachNetworkInterface(ctx context.Context, instanceID, eniID string) error {
-	log.Errorf("######## Do attach network interface #######")
+	log.Infof("######## Do attach network interface: %s to vm: %s.", eniID, instanceID)
 
 	createOpts := attachinterfaces.CreateOpts{
 		PortID: eniID,
@@ -583,7 +581,7 @@ func (c *Client) AttachNetworkInterface(ctx context.Context, instanceID, eniID s
 
 // DetachNetworkInterface to detach a previously created ENI from an instance
 func (c *Client) DetachNetworkInterface(ctx context.Context, instanceID, eniID string) error {
-	log.Errorf("######## Do detach network interface #######")
+	log.Infof("######## Do detach network interface: %s from vm: %s.", eniID, instanceID)
 	return attachinterfaces.Delete(c.novaV2, instanceID, eniID).ExtractErr()
 }
 
@@ -683,7 +681,7 @@ func (c *Client) UnassignPrivateIPAddresses(ctx context.Context, eniID string, a
 		return errors.New("no pool specified, can not unAssign ")
 	}
 
-	log.Errorf("Do Unassign ip addresses for nic %s, addresses to release is %s", eniID, addresses)
+	log.Infof("####### Do Unassign ip addresses for nic %s, addresses to release is %s", eniID, addresses)
 
 	port, err := c.getPort(eniID)
 	if err != nil {

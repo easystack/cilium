@@ -152,7 +152,7 @@ func newNodeStore(nodeName string, conf Configuration, owner Owner, clientset cl
 							log.Infof("######### New cilium node %s: eni %s is %+v ", newNode.Name, id, v)
 						}
 						for id, v := range oldNode.Status.OpenStack.ENIs {
-							log.Infof("!!!!!!!!! Old cilium node %s: eni %s is %+v ", oldNode.Name, id, v)
+							log.Infof("######### Old cilium node %s: eni %s is %+v ", oldNode.Name, id, v)
 						}
 						if oldNode.DeepEqual(newNode) {
 							// The UpdateStatus call in refreshNode requires an up-to-date
