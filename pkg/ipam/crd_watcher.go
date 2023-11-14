@@ -604,8 +604,9 @@ func SyncPoolToAPIServer(subnets ipamTypes.SubnetMap) {
 				_, err := k8sManager.alphaClient.CiliumPodIPPools().Update(context.TODO(), newPool, v1.UpdateOptions{})
 				if err != nil {
 					log.Errorf("Update ciliumPodIPPool %s failed, error is %s", cpip.Name, err)
+				} else {
+					subnetToCpip[subnetId] = cpip.Name
 				}
-				subnetToCpip[subnetId] = cpip.Name
 			}
 		}
 	}
