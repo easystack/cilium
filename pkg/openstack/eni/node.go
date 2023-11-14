@@ -124,12 +124,19 @@ func (n *Node) CreateInterface(ctx context.Context, allocation *ipam.AllocationA
 	allocation.PoolID = ipamTypes.PoolID(subnet.ID)
 
 	scopedLog = scopedLog.WithFields(logrus.Fields{
-		"subnet":           subnet.ID,
-		"toAllocate":       toAllocate,
+		"subnet":     subnet.ID,
+		"toAllocate": toAllocate,
 	})
 	scopedLog.Info("No more IPs available, creating new ENI")
 
 	instanceID := n.node.InstanceID()
+	n.mutex.Lock()
+	defer n.mutex.Unlock()
+
+	if limits.Adapters-len(n.enis) <= 0 {
+		return 0, errUnableToCreateENI, errors.New("no more eni slot")
+	}
+
 	// use configured "--openstack-security-group-ids" to create vm nics
 	eniID, eni, err := n.manager.api.CreateNetworkInterface(ctx, subnet.ID, subnet.VirtualNetworkID, instanceID, []string{}, string(pool))
 	if err != nil {
