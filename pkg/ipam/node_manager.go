@@ -747,9 +747,31 @@ func (n *NodeManager) SyncMultiPool(ctx context.Context, parallelWorkers int64) 
 					crdPool.setPoolStatus(Recycling)
 					if _, exist = poolSpec[p.String()]; exist {
 						poolSpec[p.String()].updatePerPoolSpec(node.name, cilium_v2.ItemSpec{
-							Status: "Ready",
-							Phase:  "Recycle",
+							Status: "NotReady",
+							Phase:  "Pool removed",
 						})
+					}
+				}
+			}
+
+			// check the enis, recover the pool under recycle status when operator restarts
+			for _, eni := range node.resource.Status.OpenStack.ENIs {
+				if eni.Pool == "" {
+					continue
+				}
+
+				if node.pools != nil {
+					if _, exist := node.pools[Pool(eni.Pool)]; !exist {
+						node.pools[Pool(eni.Pool)] = NewCrdPool(Pool(eni.Pool), node, n.releaseExcessIPs, Recycling)
+						poolSpec[eni.Pool].updatePerPoolSpec(node.name, cilium_v2.ItemSpec{
+							Status: "NotReady",
+							Phase:  "Pool removed",
+						})
+						mutex.Lock()
+						if _, exist := poolFinalizer[eni.Pool]; exist {
+							poolFinalizer[eni.Pool] = append(poolFinalizer[eni.Pool], node.name)
+						}
+						mutex.Unlock()
 					}
 				}
 			}
