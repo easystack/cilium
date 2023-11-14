@@ -91,7 +91,6 @@ func InitIPAMOpenStackExtra(slimClient slimclientset.Interface, alphaClient v2al
 		k8sManager.alphaClient = alphaClient
 		staticIPInit(alphaClient, stopCh)
 
-		k8sManager.updateCiliumNodeManagerPool()
 		k8sManager.apiReady = true
 		close(multiPoolExtraSynced)
 	})
@@ -104,14 +103,7 @@ func poolsInit(poolGetter v2alpha12.CiliumPodIPPoolsGetter, stopCh <-chan struct
 		utils.ListerWatcherFromTyped[*v2alpha1.CiliumPodIPPoolList](poolGetter.CiliumPodIPPools()),
 		&v2alpha1.CiliumPodIPPool{},
 		0,
-		cache.ResourceEventHandlerFuncs{
-			AddFunc: func(obj interface{}) {
-				addPool(obj)
-			},
-			DeleteFunc: func(obj interface{}) {
-				deletePool(obj)
-			},
-		},
+		cache.ResourceEventHandlerFuncs{},
 		nil,
 	)
 	go func() {
@@ -478,29 +470,6 @@ func (extraManager) maintainStaticIPCRDs(stop <-chan struct{}) {
 	}
 }
 
-func (extraManager) updateCiliumNodeManagerPool() {
-	for _, ipPool := range ListCiliumIPPool() {
-		k8sManager.nodeManager.pools[ipPool.Name] = ipPool
-	}
-}
-
-func addPool(obj interface{}) {
-	key, _ := queueKeyFunc(obj)
-	p, exists, err := crdPoolStore.GetByKey(key)
-	if err != nil {
-		log.Errorf("waring: crd pool store get pool: %s error %s", key, err)
-	}
-	if !exists {
-		return
-	}
-	k8sManager.nodeManager.pools[key] = p.(*v2alpha1.CiliumPodIPPool)
-}
-
-func deletePool(obj interface{}) {
-	key, _ := queueKeyFunc(obj)
-	delete(k8sManager.nodeManager.pools, key)
-}
-
 func (extraManager) CreateDefaultPool(subnets ipamTypes.SubnetMap) {
 	if defaultSubnetID := operatorOption.Config.OpenStackDefaultSubnetID; defaultSubnetID != "" {
 		if subnet, ok := subnets[defaultSubnetID]; ok {
@@ -590,10 +559,32 @@ func SyncPoolToAPIServer(subnets ipamTypes.SubnetMap) {
 			k8sManager.CreateDefaultPool(subnets)
 		},
 	)
-	for _, p := range ListCiliumIPPool() {
-		if subnet, ok := subnets[p.Spec.SubnetId]; ok {
-			if !p.Status.Active || (p.Spec.CIDR == "" || p.Spec.VPCId == "") {
-				newPool := p.DeepCopy()
+
+	cpips := ListCiliumIPPool()
+	subnetToCpip := map[string]string{}
+	j := 0
+
+	for _, cpip := range cpips {
+		if cpip.Status.Active == true {
+			// record the pools that already active
+			subnetToCpip[cpip.Spec.SubnetId] = cpip.Name
+			continue
+		}
+
+		cpips[j] = cpip
+		j++
+	}
+
+	// filter out subnets which inActive
+	cpips = cpips[:j]
+
+	for _, cpip := range cpips {
+		subnetId := cpip.Spec.SubnetId
+
+		// the pools cannot have the same subnet
+		if _, exist := subnetToCpip[subnetId]; !exist {
+			if subnet, ok := subnets[subnetId]; ok {
+				newPool := cpip.DeepCopy()
 				newPool.Spec.VPCId = subnet.VirtualNetworkID
 				newPool.Spec.CIDR = subnet.CIDR.String()
 				newPool.Status.Active = true
@@ -612,11 +603,12 @@ func SyncPoolToAPIServer(subnets ipamTypes.SubnetMap) {
 
 				_, err := k8sManager.alphaClient.CiliumPodIPPools().Update(context.TODO(), newPool, v1.UpdateOptions{})
 				if err != nil {
-					log.Errorf("Update ciliumPodIPPool %s failed, error is %s", p.Name, err)
+					log.Errorf("Update ciliumPodIPPool %s failed, error is %s", cpip.Name, err)
+				} else {
+					subnetToCpip[subnetId] = cpip.Name
 				}
 			}
 		}
-
 	}
 }
 func UpdateCiliumIPPoolStatus(pool string, items map[string]v2alpha1.ItemSpec, curFreePort int, reachedMaxPorts bool, finalizerFlag []string) error {

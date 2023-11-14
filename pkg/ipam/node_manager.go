@@ -197,8 +197,6 @@ type NodeManager struct {
 	releaseExcessIPs   bool
 	stableInstancesAPI bool
 	prefixDelegation   bool
-
-	pools poolMap
 }
 
 func (n *NodeManager) ClusterSizeDependantInterval(baseInterval time.Duration) time.Duration {
@@ -224,7 +222,6 @@ func NewNodeManager(instancesAPI AllocationImplementation, k8sAPI CiliumNodeGett
 		parallelWorkers:  parallelWorkers,
 		releaseExcessIPs: releaseExcessIPs,
 		prefixDelegation: prefixDelegation,
-		pools:            poolMap{},
 	}
 
 	// Assume readiness, the initial blocking resync in Start() will update
@@ -633,7 +630,11 @@ func (n *NodeManager) SyncMultiPool(ctx context.Context, parallelWorkers int64) 
 			// for range each pool annotation
 			for p, _ := range pools {
 				// judge whether the cpip exist
-				if _, hasPoolCrd := n.pools[p]; hasPoolCrd {
+				if ipPool, err := k8sManager.GetCiliumPodIPPool(p); err == nil {
+					if !ipPool.Status.Active {
+						log.Errorf("#### ciliumPodIPPool %s doesn't active, can not create crdPool", ipPool.Name)
+						continue
+					}
 					// judge whether the pool has ENI or secondaryIps
 					hasENI := false
 					hasIps := false
