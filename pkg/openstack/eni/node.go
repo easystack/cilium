@@ -94,7 +94,6 @@ func (n *Node) PopulateStatusFields(resource *v2.CiliumNode) {
 // of secondary IPs are assigned to the interface up to the maximum number of
 // addresses as allowed by the instance.
 func (n *Node) CreateInterface(ctx context.Context, allocation *ipam.AllocationAction, scopedLog *logrus.Entry, pool ipam.Pool) (int, string, error) {
-	scopedLog.Infof("@@@@@@@@@@@@@@@@@@@ Do Create interface: pool is :%v", pool.String())
 	limits, limitsAvailable := n.getLimits()
 	if !limitsAvailable {
 		return 0, unableToDetermineLimits, fmt.Errorf(errUnableToDetermineLimits)
@@ -112,9 +111,7 @@ func (n *Node) CreateInterface(ctx context.Context, allocation *ipam.AllocationA
 		return 0, "", nil
 	}
 
-	scopedLog.Infof("@@@@@@@@@@@@@@@@@@@ Do Create interface, openstack config is %+v", resource.Spec.OpenStack)
 	subnet := n.findSuitableSubnet(resource.Spec.OpenStack, limits, pool.SubnetId())
-	scopedLog.Infof("@@@@@@@@@@@@@@@@ Find subnet: %+v", subnet)
 	if subnet == nil {
 		return 0,
 			unableToFindSubnet,
@@ -126,29 +123,21 @@ func (n *Node) CreateInterface(ctx context.Context, allocation *ipam.AllocationA
 	}
 	allocation.PoolID = ipamTypes.PoolID(subnet.ID)
 
-	securityGroupIDs, err := n.getSecurityGroupIDs(ctx, resource.Spec.OpenStack)
-	if err != nil {
-		return 0,
-			unableToGetSecurityGroups,
-			fmt.Errorf("%s %s", errUnableToGetSecurityGroups, err)
-	}
-
 	scopedLog = scopedLog.WithFields(logrus.Fields{
-		"securityGroupIDs": securityGroupIDs,
 		"subnet":           subnet.ID,
 		"toAllocate":       toAllocate,
 	})
 	scopedLog.Info("No more IPs available, creating new ENI")
 
 	instanceID := n.node.InstanceID()
-	eniID, eni, err := n.manager.api.CreateNetworkInterface(ctx, subnet.ID, subnet.VirtualNetworkID, instanceID, securityGroupIDs, string(pool))
+	// use configured "--openstack-security-group-ids" to create vm nics
+	eniID, eni, err := n.manager.api.CreateNetworkInterface(ctx, subnet.ID, subnet.VirtualNetworkID, instanceID, []string{}, string(pool))
 	if err != nil {
 		return 0, unableToCreateENI, fmt.Errorf("%s %s", errUnableToCreateENI, err)
 	}
 	eni.Pool = pool.String()
 
 	scopedLog = scopedLog.WithField(fieldENIID, eniID)
-	scopedLog.Info("Created new ENI")
 
 	if subnet.CIDR != nil {
 		eni.Subnet.CIDR = subnet.CIDR.String()
@@ -174,30 +163,31 @@ func (n *Node) CreateInterface(ctx context.Context, allocation *ipam.AllocationA
 
 	err = n.manager.api.AttachNetworkInterface(ctx, instanceID, eniID)
 	if err != nil {
+		scopedLog.Errorf("Failed to attach ENI: %s to instance: %s, with error: %s", eniID, instanceID, err.Error())
 		if ifaces, err1 := n.manager.api.ListNetworkInterface(ctx, instanceID); err != nil {
 			for _, iface := range ifaces {
 				if iface.PortID == eniID {
 					err2 := n.manager.api.DetachNetworkInterface(ctx, instanceID, eniID)
 					if err2 != nil {
-						log.Infof("########### Failed to detach network interfaces, %s", err2.Error())
+						scopedLog.Errorf("########### Failed to detach network interfaces, %s", err2.Error())
 					}
 					break
 				}
 			}
 		} else if err1 != nil {
-			log.Infof("########### Failed to list network interfaces, %s", err1.Error())
+			scopedLog.Infof("########### Failed to list network interfaces, %s", err1.Error())
 		}
 
-		err1 := n.manager.api.DeleteNetworkInterface(ctx, eniID)
-		if err1 != nil {
-			scopedLog.Errorf("Failed to release ENI after failure to attach, %s", err1.Error())
+		err3 := n.manager.api.DeleteNetworkInterface(ctx, eniID)
+		if err3 != nil {
+			scopedLog.Errorf("Failed to release ENI after failure to attach, %s", err3.Error())
 		}
 		return 0, unableToAttachENI, fmt.Errorf("%s %s", errUnableToAttachENI, err)
 	}
 
 	n.enis[eniID] = *eni
 	n.poolsEnis[pool] = append(n.poolsEnis[pool], eniID)
-	scopedLog.Info("Attached ENI to instance with index:%d", index)
+	scopedLog.Infof("Attached ENI to instance:%s with index:%d", instanceID, index)
 
 	// Add the information of the created ENI to the instances manager
 	n.manager.UpdateENI(instanceID, eni)
@@ -223,7 +213,6 @@ func (n *Node) ResyncInterfacesAndIPs(ctx context.Context, scopedLog *logrus.Ent
 	n.mutex.Lock()
 	defer n.mutex.Unlock()
 	n.enis = map[string]eniTypes.ENI{}
-	scopedLog.Infof("!!!!!!!!!!!!!!!!!! Do Resync nics and ips, instanceID is %s, limits: %+v, available is %t", instanceID, limits, limitsAvailable)
 
 	n.manager.ForeachInstance(instanceID,
 		func(instanceID, interfaceID string, rev ipamTypes.InterfaceRevision) error {
@@ -239,7 +228,6 @@ func (n *Node) ResyncInterfacesAndIPs(ctx context.Context, scopedLog *logrus.Ent
 			}
 
 			if utils.IsExcludedByTags(e.Tags) {
-				scopedLog.Infof("!!!!!!!!!!!! ENI %s is excluded by tags in Resync functions", e.ID)
 				return nil
 			}
 
@@ -264,7 +252,7 @@ func (n *Node) ResyncInterfacesAndIPs(ctx context.Context, scopedLog *logrus.Ent
 
 	stats.RemainingAvailableInterfaceCount += limits.Adapters - len(n.enis)
 
-	scopedLog.Infof("!!!!!!!!!!!! ResyncInterfacesAndIPs result, stats is %+v, available is %+v", stats, available)
+	scopedLog.Infof("######### ResyncInterfacesAndIPs result, stats is %+v, available is %+v", stats, available)
 	return available, stats, nil
 }
 
@@ -325,7 +313,7 @@ func (n *Node) PrepareIPAllocation(scopedLog *logrus.Entry, pool ipam.Pool) (*ip
 		}
 	}
 	a.EmptyInterfaceSlots = l.Adapters - len(n.enis)
-	scopedLog.Infof("@@@@@@@@@@@@@@@@ Do prepare ip allocation, result is %+v", a)
+	scopedLog.Infof("############ Do prepare ip allocation, result is %+v", a)
 	return a, nil
 }
 
@@ -484,7 +472,6 @@ func (n *Node) getSecurityGroupIDs(ctx context.Context, eniSpec eniTypes.Spec) (
 	n.manager.ForeachInstance(n.node.InstanceID(),
 		func(instanceID, interfaceID string, rev ipamTypes.InterfaceRevision) error {
 			e, ok := rev.Resource.(*eniTypes.ENI)
-			log.Infof("@@@@@@@@@@@ eni detail is %+v", e)
 			if ok && e.Type == eniTypes.ENITypePrimary {
 				securityGroups = append(securityGroups, e.SecurityGroups...)
 			}
@@ -509,8 +496,6 @@ func (n *Node) getSecurityGroupIDs(ctx context.Context, eniSpec eniTypes.Spec) (
 //  3. If none of these work, fall back to just choosing the subnet with the most addresses
 //     available.
 func (n *Node) findSuitableSubnet(spec eniTypes.Spec, limits ipamTypes.Limits, subnetId string) *ipamTypes.Subnet {
-	log.Infof("@@@@@@@@@@@@@@@@@@ subnet id is %s", subnetId)
-
 	if subnetId != "" {
 		return n.manager.GetSubnet(subnetId)
 	}
@@ -558,7 +543,6 @@ func (n *Node) ResyncInterfacesAndIPsByPool(ctx context.Context, scopedLog *logr
 	defer n.mutex.Unlock()
 	n.enis = map[string]eniTypes.ENI{}
 	n.poolsEnis = map[ipam.Pool][]string{}
-	scopedLog.Infof("!!!!!!!!!!!!!!!!!! Do Resync nics and ips, instanceID is %s, limits: %+v, available is %t", instanceID, limits, limitsAvailable)
 
 	n.manager.ForeachInstance(instanceID,
 		func(instanceID, interfaceID string, rev ipamTypes.InterfaceRevision) error {
@@ -599,12 +583,12 @@ func (n *Node) ResyncInterfacesAndIPsByPool(ctx context.Context, scopedLog *logr
 
 	stats.RemainingAvailableInterfaceCount += limits.Adapters - len(n.enis)
 
-	scopedLog.Infof("!!!!!!!!!!!! ResyncInterfacesAndIPs result, remainAvailableENIsCount is %d, poolAvailable is %+v", stats.RemainingAvailableInterfaceCount, poolAvailable)
+	scopedLog.Infof("########### ResyncInterfacesAndIPs result, remainAvailableENIsCount is %d, poolAvailable is %+v", stats.RemainingAvailableInterfaceCount, poolAvailable)
 	return poolAvailable, stats, nil
 }
 
 func (n *Node) AllocateStaticIP(ctx context.Context, address string, pool ipam.Pool, portId string) (string, string, error) {
-	log.Infof("@@@@@@@@@@@@@@@@@@@ Do Allocate static IP..... %v", address)
+	log.Infof("########## Do Allocate static IP..... %v", address)
 
 	var interfaceId string
 	enis := n.poolsEnis[pool]
