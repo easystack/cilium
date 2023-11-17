@@ -258,7 +258,11 @@ func (n *NodeManager) Start(ctx context.Context) error {
 				RunInterval: time.Minute,
 				DoFunc: func(ctx context.Context) error {
 					if syncTime, ok := n.instancesAPIResync(ctx); ok {
-						n.SyncMultiPool(ctx, 100)
+						if k8sManager.apiReady {
+							n.SyncMultiPool(ctx, 100)
+						} else {
+							log.Warningf("#### Attention! k8sManager api is not ready, pool may not be created")
+						}
 						n.Resync(ctx, syncTime)
 						return nil
 					}

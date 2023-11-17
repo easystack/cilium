@@ -178,10 +178,6 @@ func (p *crdPool) maintainCRDIPPool(ctx context.Context) (poolMutated bool, err 
 			}
 		}
 		if !existENIs && p.statistics.AvailableIPs == 0 {
-			err := k8sManager.RemoveFinalizerFlag(string(p.name), p.node.name)
-			if err != nil {
-				return false, err
-			}
 			p.setPoolStatus(Delete)
 			return false, nil
 		}
