@@ -43,9 +43,6 @@ var (
 
 	queueKeyFunc = cache.DeletionHandlingMetaNamespaceKeyFunc
 
-	// multiPoolExtraInit initialize the k8sManager
-	multiPoolExtraInit sync.Once
-
 	k8sManager = extraManager{}
 
 	creationDefaultPoolOnce sync.Once
@@ -83,18 +80,12 @@ const (
 )
 
 func InitIPAMOpenStackExtra(slimClient slimclientset.Interface, alphaClient v2alpha12.CiliumV2alpha1Interface, stopCh <-chan struct{}) {
-	multiPoolExtraInit.Do(func() {
+	poolsInit(alphaClient, stopCh)
+	k8sManager.client = slimClient
+	k8sManager.alphaClient = alphaClient
+	staticIPInit(alphaClient, stopCh)
 
-		poolsInit(alphaClient, stopCh)
-
-		k8sManager.client = slimClient
-		k8sManager.alphaClient = alphaClient
-		staticIPInit(alphaClient, stopCh)
-
-		k8sManager.apiReady = true
-		close(multiPoolExtraSynced)
-	})
-
+	k8sManager.apiReady = true
 }
 
 // poolsInit starts up a node watcher to handle pool events.
@@ -496,58 +487,10 @@ func (extraManager) CreateDefaultPool(subnets ipamTypes.SubnetMap) {
 				return
 			}
 		} else {
-			log.Warnf("The creation of default pool has been ignored, due to subnet-id %s not found.", defaultSubnetID)
+			log.Fatalf("The creation of default pool has been ignored, due to default-subnetID %s not found from neutron.", defaultSubnetID)
 		}
 	}
-	log.Warnf("The creation of default pool has been ignored, due to no subnet-id set.")
-}
-
-func (extraManager) AddFinalizerFlag(pool string, nodes []string) error {
-	ipPool, err := k8sManager.GetCiliumPodIPPool(pool)
-	if err != nil {
-		return err
-	}
-	ipPool = ipPool.DeepCopy()
-
-	ipPool.Finalizers = nodes
-
-	_, err = k8sManager.alphaClient.CiliumPodIPPools().Update(context.TODO(), ipPool, v1.UpdateOptions{})
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (extraManager) RemoveFinalizerFlag(pool string, node string) error {
-	ipPool, err := k8sManager.GetCiliumPodIPPool(pool)
-	if err != nil {
-		return err
-	}
-
-	if len(ipPool.ObjectMeta.Finalizers) == 0 && ipPool.Status.Items == nil {
-		return nil
-	}
-
-	var finalizers []string
-	for idx, finalizer := range ipPool.ObjectMeta.Finalizers {
-		if finalizer == node {
-			finalizers = append(append([]string(nil), ipPool.ObjectMeta.Finalizers[:idx]...), ipPool.ObjectMeta.Finalizers[idx+1:]...)
-			break
-		}
-	}
-
-	ipPool = ipPool.DeepCopy()
-
-	ipPool.ObjectMeta.Finalizers = finalizers
-
-	delete(ipPool.Status.Items, node)
-
-	_, err = k8sManager.alphaClient.CiliumPodIPPools().Update(context.TODO(), ipPool, v1.UpdateOptions{})
-	if err != nil {
-		return err
-	}
-	return nil
+	log.Fatalf("The creation of default pool has been ignored, due to no default-subnetID set.")
 }
 
 func SyncPoolToAPIServer(subnets ipamTypes.SubnetMap) {
@@ -607,7 +550,11 @@ func SyncPoolToAPIServer(subnets ipamTypes.SubnetMap) {
 				} else {
 					subnetToCpip[subnetId] = cpip.Name
 				}
+			} else {
+				log.Errorf("#### the subnet-id %s can not found from neutron.", subnetId)
 			}
+		} else {
+			log.Errorf("#### here's already a cpip for subnet-ID %s, so cpip %s can not be activated", subnetId, cpip.Name)
 		}
 	}
 }

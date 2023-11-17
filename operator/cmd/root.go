@@ -468,11 +468,11 @@ func (legacy *legacyOnLeader) onStart(_ hive.HookContext) error {
 
 		nm, err := alloc.Start(legacy.ctx, &ciliumNodeUpdateImplementation{legacy.clientset})
 
-		ipam.InitIPAMOpenStackExtra(legacy.clientset.Slim(), legacy.clientset.CiliumV2alpha1(), legacy.ctx.Done())
-
 		if err != nil {
 			log.WithError(err).Fatalf("Unable to start %s allocator", ipamMode)
 		}
+
+		ipam.InitIPAMOpenStackExtra(legacy.clientset.Slim(), legacy.clientset.CiliumV2alpha1(), legacy.ctx.Done())
 
 		nodeManager = nm
 	}
