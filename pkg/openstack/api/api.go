@@ -102,8 +102,6 @@ type Client struct {
 	fillingAvailPool      *trigger.Trigger
 	syncAvailablePoolTime time.Time
 	inCreatingProgress    bool
-
-	mayLeakIps sync.Map
 }
 
 type poolAvailable struct {
@@ -121,12 +119,10 @@ func (a *poolAvailable) get(num int) []ports.Port {
 	if num == 0 {
 		return []ports.Port{}
 	}
-	log.Debugf("##### before get, pool size is %d", len(a.port))
 	dest := make([]ports.Port, num)
 	ps := a.port[:num]
 	copy(dest, ps)
 	a.port = a.port[num:]
-	log.Debugf("##### get %d ports from pool, port is %+v, pool size is %d", num, dest, len(a.port))
 	return dest
 }
 
@@ -304,7 +300,7 @@ func NewClient(metrics MetricsAPI, rateLimit float64, burst int, filters map[str
 										return false
 									}
 								}
-								returnToAvailablePool()
+								log.Warningf("#### Attention! port %s, ip %s may leak !!", portId, record.ipAddr)
 							case UpdatePort:
 								if port.DeviceID == AvailablePoolFakeDeviceID+record.pool {
 									c.failureRecord.Delete(key)
@@ -713,11 +709,13 @@ func (c *Client) UnassignPrivateIPAddresses(ctx context.Context, eniID string, a
 		return err
 	}
 
+	var finalErr error
+
 	poolDeviceId := AvailablePoolFakeDeviceID + pool
-	recordTime := time.Now()
 	for _, ip := range releasedIP {
 		port, err = c.getPortFromIP(networkId, ip)
 		if err != nil {
+			finalErr = err
 			log.Errorf("######## failed to get secondary ip %s when return ip to  availible pool, error is %s", ip, err)
 		} else {
 			portName := fmt.Sprintf(FreePodInterfaceName+"-%s", randomString(10))
@@ -726,12 +724,12 @@ func (c *Client) UnassignPrivateIPAddresses(ctx context.Context, eniID string, a
 				DeviceID: &poolDeviceId,
 			}).Extract()
 			if err != nil {
-				c.mayLeakIps.Store(port.ID, recordTime)
-				log.Errorf("######## failed to return secondary ip: %s to availible pool, error is %s", port.ID, err)
+				finalErr = err
+				log.Warningf("#### Attention! port %s, ip %s may leak !!", port.ID, ip)
 			}
 		}
 	}
-	return nil
+	return finalErr
 }
 
 // updatePortAllowedAddressPairs to assign secondary ip address
