@@ -14,6 +14,7 @@ import (
 	"time"
 
 	cilium_v2 "github.com/cilium/cilium/pkg/k8s/apis/cilium.io/v2alpha1"
+	k8s_v1 "github.com/cilium/cilium/pkg/k8s/slim/k8s/api/core/v1"
 	"github.com/cilium/cilium/pkg/openstack/eni/limits"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -586,12 +587,18 @@ func (n *NodeManager) Resync(ctx context.Context, syncTime time.Time) {
 // SyncMultiPool labels the node with "openstack-ip-pool" when a ciliumNode upsert or a k8s node's pool annotation changed
 func (n *NodeManager) SyncMultiPool(ctx context.Context, parallelWorkers int64) {
 	now := time.Now()
-	defer log.Infof("#### sync multipool finished takes %s", time.Since(now))
+	defer func() {
+		log.Infof("#### sync multipool finished takes %s", time.Since(now))
+	}()
 
 	k8sNodes, err := k8sManager.client.CoreV1().Nodes().List(ctx, v1.ListOptions{})
 	if err != nil {
 		log.Errorf("failed to list all nodes when sync multi pool, error is %s", err)
 		return
+	}
+	nodeList := map[string]k8s_v1.Node{}
+	for _, item := range k8sNodes.Items {
+		nodeList[item.Name] = item
 	}
 
 	annotations := map[string]string{}
@@ -789,7 +796,7 @@ func (n *NodeManager) SyncMultiPool(ctx context.Context, parallelWorkers int64) 
 				}
 			}
 
-			err = k8sManager.LabelNodeWithPool(node.name, labels)
+			err = k8sManager.LabelNodeWithPool(labels, nodeList[node.name])
 			if err != nil {
 				log.Errorf("failed to label node %s with pool %s", node.name, err)
 			}

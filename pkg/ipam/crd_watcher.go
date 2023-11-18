@@ -179,13 +179,9 @@ func (extraManager) GetCiliumPodIPPool(name string) (*v2alpha1.CiliumPodIPPool, 
 }
 
 // LabelNodeWithPool relabel the node with provided labels map
-func (extraManager) LabelNodeWithPool(nodeName string, labels map[string]string) error {
-	oldNode, err := k8sManager.client.CoreV1().Nodes().Get(context.Background(), nodeName, v1.GetOptions{})
-	if err != nil {
-		return err
-	}
+func (extraManager) LabelNodeWithPool(labels map[string]string, node slim_corev1.Node) error {
 
-	newNode := oldNode.DeepCopy()
+	newNode := node.DeepCopy()
 	newLabels := newNode.GetLabels()
 
 	// remove all the old pool label
@@ -199,11 +195,11 @@ func (extraManager) LabelNodeWithPool(nodeName string, labels map[string]string)
 	for k, v := range labels {
 		newLabels[k] = v
 	}
-	if judgeLabelDeepEqual(oldNode.GetLabels(), newLabels) {
+	if judgeLabelDeepEqual(node.GetLabels(), newLabels) {
 		return nil
 	}
 	newNode.SetLabels(newLabels)
-	_, err = k8sManager.client.CoreV1().Nodes().Update(context.Background(), newNode, v1.UpdateOptions{})
+	_, err := k8sManager.client.CoreV1().Nodes().Update(context.Background(), newNode, v1.UpdateOptions{})
 
 	return err
 }
