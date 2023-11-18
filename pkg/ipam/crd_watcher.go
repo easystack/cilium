@@ -152,7 +152,7 @@ type extraManager struct {
 // ListCiliumIPPool returns all the *v2alpha1.CiliumPodIPPool from crdPoolStore
 func ListCiliumIPPool() []*v2alpha1.CiliumPodIPPool {
 	if crdPoolStore == nil {
-		log.Infoln("crd pool store is not ready")
+		log.Infoln("### crd pool store is not ready")
 		return nil
 	}
 	poolsInt := crdPoolStore.List()
@@ -238,7 +238,7 @@ func (m extraManager) updateStaticIP(ipCrd *v2alpha1.CiliumStaticIP) {
 
 	switch ipCrd.Status.IPStatus {
 	case v2alpha1.WaitingForAssign:
-		log.Infof("ready to assign ip: %v for pod: %v, on node: %v .", ip, podFullName, node)
+		log.Debugf("ready to assign ip: %v for pod: %v, on node: %v .", ip, podFullName, node)
 		if n, ok := k8sManager.nodeManager.nodes[node]; ok {
 			if p, ok := n.pools[Pool(pool)]; ok {
 				portId, eniID, err := p.allocateStaticIP(ip, Pool(pool), ipCrd.Spec.PortId)

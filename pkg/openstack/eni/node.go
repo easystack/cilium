@@ -157,7 +157,7 @@ func (n *Node) CreateInterface(ctx context.Context, allocation *ipam.AllocationA
 		scopedLog.WithField("instanceID", instanceID).Error(err)
 		return 0, "Failed to allocate eni index", err
 	}
-	scopedLog.Infof("########### got index is %d", index)
+	scopedLog.Debugf("########### got index is %d", index)
 	err = n.manager.api.AddTagToNetworkInterface(ctx, eniID, utils.FillTagWithENIIndex(index))
 	if err != nil {
 		scopedLog.Errorf("########### Failed to add tag with error: %+v, %s", err, err)
@@ -259,7 +259,7 @@ func (n *Node) ResyncInterfacesAndIPs(ctx context.Context, scopedLog *logrus.Ent
 
 	stats.RemainingAvailableInterfaceCount += limits.Adapters - len(n.enis)
 
-	scopedLog.Infof("######### ResyncInterfacesAndIPs result, stats is %+v, available is %+v", stats, available)
+	scopedLog.Debugf("######### ResyncInterfacesAndIPs result, stats is %+v, available is %+v", stats, available)
 	return available, stats, nil
 }
 
@@ -320,7 +320,7 @@ func (n *Node) PrepareIPAllocation(scopedLog *logrus.Entry, pool ipam.Pool) (*ip
 		}
 	}
 	a.EmptyInterfaceSlots = l.Adapters - len(n.enis)
-	scopedLog.Infof("############ Do prepare ip allocation, result is %+v", a)
+	scopedLog.Debugf("############ Do prepare ip allocation, result is %+v", a)
 	return a, nil
 }
 
@@ -378,7 +378,7 @@ func (n *Node) PrepareIPRelease(excessIPs int, scopedLog *logrus.Entry, pool ipa
 			fieldENIID:       e.ID,
 			"excessIPs":      excessIPs,
 			"freeOnENICount": freeOnENICount,
-		}).Infof("ENI has unused IPs that can be released")
+		}).Debugln("ENI has unused IPs that can be released")
 		maxReleaseOnENI := math.IntMin(freeOnENICount, excessIPs)
 
 		r.InterfaceID = eid
@@ -590,7 +590,7 @@ func (n *Node) ResyncInterfacesAndIPsByPool(ctx context.Context, scopedLog *logr
 
 	stats.RemainingAvailableInterfaceCount += limits.Adapters - len(n.enis)
 
-	scopedLog.Infof("########### ResyncInterfacesAndIPs result, remainAvailableENIsCount is %d, poolAvailable is %+v", stats.RemainingAvailableInterfaceCount, poolAvailable)
+	scopedLog.Debugf("########### ResyncInterfacesAndIPs result, remainAvailableENIsCount is %d, poolAvailable is %+v", stats.RemainingAvailableInterfaceCount, poolAvailable)
 	return poolAvailable, stats, nil
 }
 
