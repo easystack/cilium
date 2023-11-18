@@ -320,7 +320,7 @@ func NewClient(metrics MetricsAPI, rateLimit float64, burst int, filters map[str
 			})
 	}()
 
-	log.Errorf("######## client details is: %+v", idenV3)
+	log.Debugf("######## client details is: %+v", idenV3)
 	return c, nil
 }
 
@@ -496,7 +496,7 @@ func (c *Client) GetSubnets(ctx context.Context) (ipamTypes.SubnetMap, error) {
 // GetSecurityGroups returns all security groups as a SecurityGroupMap
 func (c *Client) GetSecurityGroups(ctx context.Context) (types.SecurityGroupMap, error) {
 	securityGroups := types.SecurityGroupMap{}
-	log.Errorf("######## Do Get sgs")
+	log.Debugf("######## Do Get sgs")
 	secGroupList, err := c.describeSecurityGroups()
 	if err != nil {
 		return securityGroups, err
@@ -1033,7 +1033,7 @@ func randomString(length int) string {
 }
 
 func (c *Client) UnassignPrivateIPAddressesRetainPort(ctx context.Context, vpcID string, address string) error {
-	log.Errorf("##### Do Unassign static ip, subnetId is %s address is %s", vpcID, address)
+	log.Debugf("##### Do Unassign static ip, subnetId is %s address is %s", vpcID, address)
 
 	secondaryIpPort, err := c.getPortFromIP(vpcID, address)
 
@@ -1083,7 +1083,7 @@ func (c *Client) UnassignPrivateIPAddressesRetainPort(ctx context.Context, vpcID
 }
 
 func (c *Client) AssignStaticPrivateIPAddresses(ctx context.Context, eniID string, address string, portId string) (string, error) {
-	log.Errorf("######## Do Assign static ip addresses for nic %s", eniID)
+	log.Debugf("######## Do Assign static ip addresses for nic %s", eniID)
 
 	port, err := c.getPort(eniID)
 	if err != nil {
