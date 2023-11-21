@@ -56,8 +56,8 @@ const (
 
 	DefaultMaxCreatePort     = 1024
 	DefaultCPIPWatermark     = "0.01"
-	DefaultPreallocate       = 3
-	DefaultMaxAboveWaterMark = 10
+	DefaultNodePreallocate       = 3
+	DefaultNodeMaxAboveWaterMark = 10
 )
 
 const (
@@ -472,6 +472,8 @@ func (extraManager) CreateDefaultPool(subnets ipamTypes.SubnetMap) {
 					SubnetId: defaultSubnetID,
 					CIDR:     subnet.CIDR.String(),
 					VPCId:    subnet.VirtualNetworkID,
+					NodePreAllocate: DefaultNodePreallocate,
+					NodeMaxAboveWatermark: DefaultNodeMaxAboveWaterMark,
 				},
 			}
 			_, err := k8sManager.alphaClient.CiliumPodIPPools().Create(context.TODO(), defaultPool, v1.CreateOptions{})
@@ -533,11 +535,11 @@ func SyncPoolToAPIServer(subnets ipamTypes.SubnetMap) {
 				if newPool.Spec.MaxFreePort == 0 {
 					newPool.Spec.MaxFreePort = DefaultMaxCreatePort
 				}
-				if newPool.Spec.NodeMaxAboveWatermark == 0 {
-					newPool.Spec.NodeMaxAboveWatermark = DefaultMaxAboveWaterMark
+				if newPool.Spec.NodeMaxAboveWatermark < 0 {
+					newPool.Spec.NodeMaxAboveWatermark = DefaultNodeMaxAboveWaterMark
 				}
-				if newPool.Spec.NodePreAllocate == 0 {
-					newPool.Spec.NodePreAllocate = DefaultPreallocate
+				if newPool.Spec.NodePreAllocate < 0 {
+					newPool.Spec.NodePreAllocate = DefaultNodePreallocate
 				}
 
 				_, err := k8sManager.alphaClient.CiliumPodIPPools().Update(context.TODO(), newPool, v1.UpdateOptions{})
