@@ -554,7 +554,7 @@ func (n *NodeManager) Resync(ctx context.Context, syncTime time.Time) {
 	sem := semaphore.NewWeighted(n.parallelWorkers)
 
 	for _, node := range n.GetNodesByIPWatermark() {
-		log.Infof("########### node manager Resync node %s", node.name)
+		log.Debugf("########### node manager Resync node %s", node.name)
 		err := sem.Acquire(ctx, 1)
 		if err != nil {
 			continue
@@ -588,7 +588,7 @@ func (n *NodeManager) Resync(ctx context.Context, syncTime time.Time) {
 func (n *NodeManager) SyncMultiPool(ctx context.Context, parallelWorkers int64) {
 	now := time.Now()
 	defer func() {
-		log.Infof("#### sync multipool finished takes %s", time.Since(now))
+		log.Debugf("#### sync multipool finished takes %s", time.Since(now))
 	}()
 
 	k8sNodes, err := k8sManager.client.CoreV1().Nodes().List(ctx, v1.ListOptions{})

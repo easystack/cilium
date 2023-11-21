@@ -718,7 +718,7 @@ func (n *Node) handleIPRelease(ctx context.Context, a *maintenanceAction, pool s
 	var ipsToRelease []string
 
 	if a.release != nil {
-		scopedLog.Infof("######### handleIPRelease interface id is %s, pool id is %s, ipsToRelease is %s ", a.release.InterfaceID, a.release.PoolID, strings.Join(a.release.IPsToRelease, ", "))
+		scopedLog.Debugf("######### handleIPRelease interface id is %s, pool id is %s, ipsToRelease is %s ", a.release.InterfaceID, a.release.PoolID, strings.Join(a.release.IPsToRelease, ", "))
 	}
 
 	// Update timestamps for IPs from this iteration
@@ -828,7 +828,7 @@ func (n *Node) handleIPAllocation(ctx context.Context, a *maintenanceAction) (in
 		return false, nil
 	}
 
-	scopedLog.Infof("######## action details is %+v", a.allocation)
+	scopedLog.Debugf("######## action details is %+v", a.allocation)
 	// Assign needed addresses
 	if a.allocation.AvailableForAllocation > 0 {
 		a.allocation.AvailableForAllocation = math.IntMin(a.allocation.AvailableForAllocation, a.allocation.MaxIPsToAllocate)

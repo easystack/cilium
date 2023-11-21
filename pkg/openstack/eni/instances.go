@@ -151,14 +151,11 @@ func (m *InstancesManager) FindSubnetByIDs(vpcID, availabilityZone string, subne
 	defer m.mutex.RUnlock()
 
 	var bestSubnet *ipamTypes.Subnet
-	log.Errorf("################ subnet ID is %s", subnetIDs[0])
 	for _, s := range m.subnets {
-		log.Errorf("################ subnet is %+v", s)
 		if s.VirtualNetworkID == vpcID {
 			for _, subnetID := range subnetIDs {
 				if s.ID == subnetID {
 					if bestSubnet == nil || bestSubnet.AvailableAddresses < s.AvailableAddresses {
-						log.Errorf("################ best subnet is %+v", s)
 						bestSubnet = s
 					}
 					continue
@@ -211,7 +208,7 @@ func (m *InstancesManager) resync(ctx context.Context, instanceID string) time.T
 			return time.Time{}
 		}
 
-		log.Infof("##### az list is %+v", azs)
+		log.Debugf("##### az list is %+v", azs)
 
 		subnets, err = m.api.GetSubnets(ctx)
 		if err != nil {
