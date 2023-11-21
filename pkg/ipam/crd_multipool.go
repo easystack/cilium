@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/cilium/cilium/operator/watchers"
+	"github.com/cilium/cilium/pkg/defaults"
 	"github.com/cilium/cilium/pkg/ipam/metrics"
 	ipamStats "github.com/cilium/cilium/pkg/ipam/stats"
 	ipamTypes "github.com/cilium/cilium/pkg/ipam/types"
@@ -392,10 +393,14 @@ func (p *crdPool) recalculate(allocate ipamTypes.AllocationMap, stats ipamStats.
 func (p *crdPool) getPreAllocate() int {
 
 	ipPool, err := k8sManager.GetCiliumPodIPPool(p.name.String())
-	if err == nil && ipPool.Spec.NodePreAllocate >= 0 {
+	if err == nil && ipPool.Spec.NodePreAllocate > 0 {
 		return ipPool.Spec.NodePreAllocate
 	}
-	return DefaultNodePreallocate
+
+	if p.node.resource.Spec.IPAM.PreAllocate != 0 {
+		return p.node.resource.Spec.IPAM.PreAllocate
+	}
+	return defaults.IPAMPreAllocation
 }
 
 // getMaxAboveWatermark returns the max-above-watermark setting for an AWS node
@@ -403,10 +408,10 @@ func (p *crdPool) getPreAllocate() int {
 // n.mutex must be held when calling this function
 func (p *crdPool) getMaxAboveWatermark() int {
 	ipPool, err := k8sManager.GetCiliumPodIPPool(p.name.String())
-	if err == nil && ipPool.Spec.NodeMaxAboveWatermark >= 0 {
+	if err == nil && ipPool.Spec.NodeMaxAboveWatermark > 0 {
 		return ipPool.Spec.NodeMaxAboveWatermark
 	}
-	return DefaultNodeMaxAboveWaterMark
+	return p.node.resource.Spec.IPAM.MaxAboveWatermark
 }
 
 // getMinAllocate returns the minimum-allocation setting of an AWS node
