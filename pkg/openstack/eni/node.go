@@ -158,7 +158,8 @@ func (n *Node) CreateInterface(ctx context.Context, allocation *ipam.AllocationA
 		return 0, "Failed to allocate eni index", err
 	}
 	scopedLog.Infof("########### got index is %d", index)
-	err = n.manager.api.AddTagToNetworkInterface(ctx, eniID, utils.FillTagWithENIIndex(index))
+	eniIndex := utils.FillTagWithENIIndex(index)
+	err = n.manager.api.AddTagToNetworkInterface(ctx, eniID, eniIndex)
 	if err != nil {
 		scopedLog.Errorf("########### Failed to add tag with error: %+v, %s", err, err)
 		err = n.manager.api.DeleteNetworkInterface(ctx, eniID)
@@ -191,7 +192,7 @@ func (n *Node) CreateInterface(ctx context.Context, allocation *ipam.AllocationA
 		}
 		return 0, unableToAttachENI, fmt.Errorf("%s %s", errUnableToAttachENI, err)
 	}
-
+	eni.Tags = []string{eniIndex}
 	n.enis[eniID] = *eni
 	n.poolsEnis[pool] = append(n.poolsEnis[pool], eniID)
 	scopedLog.Infof("Attached ENI to instance:%s with index:%d", instanceID, index)
