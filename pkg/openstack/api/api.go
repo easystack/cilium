@@ -1429,19 +1429,21 @@ func (c *Client) describeNetworkInterfaces(azs []string) ([]ports.Port, error) {
 	var result []ports.Port
 	var err error
 	for _, az := range azs {
+		var curAz []ports.Port
 		opts := ports.ListOpts{
 			ProjectID:   c.filters[ProjectID],
 			DeviceOwner: az,
 		}
 
 		err = ports.List(c.neutronV2, opts).EachPage(func(page pagination.Page) (bool, error) {
-			result, err = ports.ExtractPorts(page)
+			curAz, err = ports.ExtractPorts(page)
 			if err != nil {
 				return false, err
 			}
 
 			return true, nil
 		})
+		result = append(result, curAz...)
 	}
 
 	return result, nil
