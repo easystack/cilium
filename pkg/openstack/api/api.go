@@ -899,7 +899,7 @@ func parseENI(port *ports.Port, subnets ipamTypes.SubnetMap) (instanceID string,
 		eni.Subnet.CIDR = subnet.CIDR.String()
 	}
 	if !ok {
-		log.Errorf("##### ops! parse eni failed,subnet ID: %s not found.", subnetID)
+		log.Warningf("##### ops! parse eni failed,subnet ID: %s not found, port id is %s, device-id is %s", subnetID, port.ID, port.DeviceID)
 	}
 
 	var ipsets []eniTypes.PrivateIPSet
@@ -1346,8 +1346,8 @@ func (c *Client) FillingAvailablePool() {
 	// complete and thus blocks until all cpip are synced
 	sem.Acquire(context.TODO(), 5)
 
-	log.Infof("###### ready to call bulkCreatePort, opts is %+v", opts)
 	if len(opts) > 0 {
+		log.Infof("###### ready to call bulkCreatePort, opts is %+v", opts)
 		c.bulkCreatePort(opts)
 	}
 }
