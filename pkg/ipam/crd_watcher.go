@@ -55,7 +55,7 @@ const (
 	defaultWaitingForAssignTimeOut = time.Minute * 1
 
 	DefaultMaxCreatePort     = 1024
-	DefaultCPIPWatermark     = "0.01"
+	DefaultCPIPWatermark     = "1"
 	DefaultPreallocate       = 3
 	DefaultMaxAboveWaterMark = 10
 )
