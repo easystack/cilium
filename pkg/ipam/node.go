@@ -552,7 +552,7 @@ func (n *Node) createInterface(ctx context.Context, a *AllocationAction, pool Po
 	toAllocate, errCondition, err := n.ops.CreateInterface(ctx, a, scopedLog, pool)
 	if err != nil {
 		n.manager.metricsAPI.AllocationAttempt(createInterfaceAndAllocateIP, errCondition, string(a.PoolID), metrics.SinceInSeconds(start))
-		scopedLog.Warningf("Unable to create interface on instance: %s", err)
+		scopedLog.Warningf("Unable to create interface on instance: %s with error: %s", n.InstanceID(), err)
 		return false, err
 	}
 
