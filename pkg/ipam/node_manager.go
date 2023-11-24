@@ -554,12 +554,12 @@ func (n *NodeManager) Resync(ctx context.Context, syncTime time.Time) {
 	sem := semaphore.NewWeighted(n.parallelWorkers)
 
 	for _, node := range n.GetNodesByIPWatermark() {
-		log.Debugf("########### node manager Resync node %s", node.name)
 		err := sem.Acquire(ctx, 1)
 		if err != nil {
 			continue
 		}
 		go func(node *Node, stats *resyncStats) {
+			log.Infof("####### node manager start to resyncNode: %s instanceID is %s", node.name, node.InstanceID())
 			n.resyncNode(ctx, node, stats, syncTime)
 			sem.Release(1)
 		}(node, &stats)
