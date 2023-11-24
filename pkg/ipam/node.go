@@ -12,21 +12,16 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sirupsen/logrus"
-	"k8s.io/client-go/tools/cache"
-
 	operatorOption "github.com/cilium/cilium/operator/option"
-	"github.com/cilium/cilium/operator/watchers"
 	"github.com/cilium/cilium/pkg/defaults"
 	"github.com/cilium/cilium/pkg/ipam/metrics"
 	ipamOption "github.com/cilium/cilium/pkg/ipam/option"
 	ipamTypes "github.com/cilium/cilium/pkg/ipam/types"
 	v2 "github.com/cilium/cilium/pkg/k8s/apis/cilium.io/v2"
-	v1 "github.com/cilium/cilium/pkg/k8s/slim/k8s/api/core/v1"
 	"github.com/cilium/cilium/pkg/lock"
 	"github.com/cilium/cilium/pkg/logging/logfields"
 	"github.com/cilium/cilium/pkg/math"
-	"github.com/cilium/cilium/pkg/trigger"
+	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -42,23 +37,7 @@ const (
 	// operator status
 	success = "success"
 	failed  = "failed"
-
-	// allocate ip status
-	AllocateStaticIPErr = "ip has already mount on eni"
 )
-
-func (n *Node) SetOpts(ops NodeOperations) {
-	n.ops = ops
-}
-
-func (n *Node) SetPoolMaintainer(maintainer PoolMaintainer) {
-	n.poolMaintainer = maintainer
-}
-
-type PoolMaintainer interface {
-	Trigger()
-	Shutdown()
-}
 
 // Node represents a Kubernetes node running Cilium with an associated
 // CiliumNode custom resource
@@ -113,24 +92,24 @@ type Node struct {
 	// private IP addresses of this node.
 	// It ensures that multiple requests to operate private IPs are
 	// batched together if pool maintenance is still ongoing.
-	poolMaintainer PoolMaintainer
+	poolMaintainer func()
 
 	// k8sSync is the trigger used to synchronize node information with the
 	// K8s apiserver. The trigger is used to batch multiple updates
 	// together if the apiserver is slow to respond or subject to rate
 	// limiting.
-	k8sSync *trigger.Trigger
+	k8sSync func()
 
 	// instanceSync is the trigger used to fetch instance information
 	// with external APIs or systems.
-	instanceSync *trigger.Trigger
+	instanceSync func()
 
 	// ops is the IPAM implementation to used for this node
 	ops NodeOperations
 
 	// retry is the trigger used to retry pool maintenance while the
 	// instances API is unstable
-	retry *trigger.Trigger
+	retry func()
 
 	// Excess IPs from a cilium node would be marked for release only after a delay configured by excess-ip-release-delay
 	// flag. ipsMarkedForRelease tracks the IP and the timestamp at which it was marked for release.
@@ -292,26 +271,6 @@ func (n *Node) GetNeededAddresses() int {
 		return stats.ExcessIPs * -1
 	}
 	return 0
-}
-
-// getPendingPodCount computes the number of pods in pending state on a given node. watchers.PodStore is assumed to be
-// initialized before this function is called.
-func getPendingPodCount(nodeName string) (int, error) {
-	pendingPods := 0
-	if watchers.PodStore == nil {
-		return pendingPods, fmt.Errorf("pod store uninitialized")
-	}
-	values, err := watchers.PodStore.(cache.Indexer).ByIndex(watchers.PodNodeNameIndex, nodeName)
-	if err != nil {
-		return pendingPods, fmt.Errorf("unable to access pod to node name index: %w", err)
-	}
-	for _, pod := range values {
-		p := pod.(*v1.Pod)
-		if p.Status.Phase == v1.PodPending {
-			pendingPods++
-		}
-	}
-	return pendingPods, nil
 }
 
 func calculateNeededIPs(availableIPs, usedIPs, preAllocate, minAllocate, maxAllocate int, maxAboveWatermark int) (neededIPs int) {
@@ -876,9 +835,6 @@ func (n *Node) MaintainIPPool(ctx context.Context) error {
 	// As long as the instances API is unstable, don't perform any
 	// operation that can mutate state.
 	if !n.manager.InstancesAPIIsReady() {
-		if n.retry != nil {
-			n.retry.Trigger()
-		}
 		return fmt.Errorf("instances API is unstable. Blocking mutating operations. See logs for details.")
 	}
 
@@ -919,7 +875,7 @@ func (n *Node) MaintainIPPool(ctx context.Context) error {
 	n.recalculate()
 
 	if instanceMutated || err != nil {
-		n.instanceSync.Trigger()
+		n.instanceSync()
 	}
 
 	return err

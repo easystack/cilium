@@ -365,7 +365,6 @@ func (extraManager) maintainStaticIPCRDs(stop <-chan struct{}) {
 					}
 				case v2alpha1.Assigned:
 					timeout := ipCrd.Status.UpdateTime.Add(defaultAssignTimeOut)
-					updateTime := ipCrd.Status.UpdateTime.Time
 
 					if !timeout.After(now) {
 						ipCopy.Status.IPStatus = v2alpha1.Idle
@@ -376,13 +375,6 @@ func (extraManager) maintainStaticIPCRDs(stop <-chan struct{}) {
 						if err != nil {
 							log.Errorf("static ip maintainer update csip: %s failed, before status: %s, expect status: %s, err is: %s.",
 								ipCopy.Name, v2alpha1.Assigned, v2alpha1.Idle, err)
-						}
-						// if the csip is in Assigned status, but it was not used for a long time, so we should update the ciliumnode，
-						// so that the agent can see the ip is available
-						// notice: 15 * time.Second is the safe time for synchronization between agent and operator
-					} else if timeout.Sub(now) > 15*time.Second && now.Sub(updateTime) > 15*time.Second {
-						if n, ok := k8sManager.nodeManager.nodes[ipCrd.Spec.NodeName]; ok {
-							n.k8sSync.Trigger()
 						}
 					}
 				case v2alpha1.WaitingForRelease:
