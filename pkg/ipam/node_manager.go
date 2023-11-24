@@ -311,14 +311,16 @@ func (n *NodeManager) Upsert(resource *v2.CiliumNode) {
 	node, ok := n.nodes[resource.Name]
 	if !ok {
 		node = &Node{
-			name:                resource.Name,
-			manager:             n,
-			ipsMarkedForRelease: make(map[string]time.Time),
-			ipReleaseStatus:     make(map[string]string),
-			logLimiter:          logging.NewLimiter(10*time.Second, 3), // 1 log / 10 secs, burst of 3
-			pools:               map[Pool]pool{},
-			poolStats:           map[Pool]*Statistics{},
-			poolAvailable:       map[Pool]ipamTypes.AllocationMap{},
+			name:                  resource.Name,
+			manager:               n,
+			ipsMarkedForRelease:   make(map[string]time.Time),
+			ipReleaseStatus:       make(map[string]string),
+			logLimiter:            logging.NewLimiter(10*time.Second, 3), // 1 log / 10 secs, burst of 3
+			pools:                 map[Pool]pool{},
+			poolStats:             map[Pool]*Statistics{},
+			poolAvailable:         map[Pool]ipamTypes.AllocationMap{},
+			maintainCompleted:     make(chan struct{}),
+			instanceSyncCompleted: make(chan struct{}),
 		}
 
 		ctx, cancel := context.WithCancel(context.Background())
@@ -350,6 +352,7 @@ func (n *NodeManager) Upsert(resource *v2.CiliumNode) {
 					node.logger().WithError(err).Warning("Unable to maintain ip pool of node")
 					backoff.Wait(ctx)
 				}
+				node.maintainCompleted <- struct{}{}
 			},
 			ShutdownFunc: cancel,
 		})
@@ -391,6 +394,7 @@ func (n *NodeManager) Upsert(resource *v2.CiliumNode) {
 				if syncTime, ok := node.instanceAPISync(ctx, resource.InstanceID()); ok {
 					n.resyncNode(ctx, node, nil, syncTime)
 				}
+				node.instanceSyncCompleted <- struct{}{}
 			},
 		})
 		if err != nil {
@@ -505,6 +509,7 @@ func (n *NodeManager) resyncNode(ctx context.Context, node *Node, stats *resyncS
 	if allocationNeeded || releaseNeeded {
 		node.requirePoolMaintenance()
 		node.poolMaintainer.Trigger()
+		<-node.maintainCompleted
 	}
 
 	if stats != nil {

@@ -147,6 +147,10 @@ type Node struct {
 	logLimiter logging.Limiter
 
 	pools map[Pool]pool
+
+	maintainCompleted chan struct{}
+
+	instanceSyncCompleted chan struct{}
 }
 
 // Statistics represent the IP allocation statistics of a node
@@ -421,8 +425,7 @@ func (n *Node) UpdatedResource(resource *v2.CiliumNode) bool {
 
 	n.ops.UpdatedNode(resource)
 
-	n.recalculate()
-
+	/*	n.recalculate() */
 	return false
 }
 
@@ -822,33 +825,8 @@ func (n *Node) handleIPRelease(ctx context.Context, a *maintenanceAction, pool s
 // handleIPAllocation allocates the necessary IPs needed to resolve deficit on the node.
 // If existing interfaces don't have enough capacity, new interface would be created.
 func (n *Node) handleIPAllocation(ctx context.Context, a *maintenanceAction) (instanceMutated bool, err error) {
-	scopedLog := n.logger()
-	if a.allocation == nil {
-		scopedLog.Debug("No allocation action required")
-		return false, nil
-	}
 
-	scopedLog.Debugf("######## action details is %+v", a.allocation)
-	// Assign needed addresses
-	if a.allocation.AvailableForAllocation > 0 {
-		a.allocation.AvailableForAllocation = math.IntMin(a.allocation.AvailableForAllocation, a.allocation.MaxIPsToAllocate)
-
-		start := time.Now()
-		err := n.ops.AllocateIPs(ctx, a.allocation, "")
-		if err == nil {
-			n.manager.metricsAPI.AllocationAttempt(allocateIP, success, string(a.allocation.PoolID), metrics.SinceInSeconds(start))
-			n.manager.metricsAPI.AddIPAllocation(string(a.allocation.PoolID), int64(a.allocation.AvailableForAllocation))
-			return true, nil
-		}
-
-		n.manager.metricsAPI.AllocationAttempt(allocateIP, failed, string(a.allocation.PoolID), metrics.SinceInSeconds(start))
-		scopedLog.WithFields(logrus.Fields{
-			"selectedInterface": a.allocation.InterfaceID,
-			"ipsToAllocate":     a.allocation.AvailableForAllocation,
-		}).WithError(err).Warning("Unable to assign additional IPs to interface, will create new interface")
-	}
-
-	return n.createInterface(ctx, a.allocation, "")
+	return false, nil
 }
 
 func (n *Node) isInstanceRunning() (isRunning bool) {
@@ -920,6 +898,7 @@ func (n *Node) MaintainIPPool(ctx context.Context) error {
 
 	if instanceMutated || err != nil {
 		n.instanceSync.Trigger()
+		<-n.instanceSyncCompleted
 	}
 
 	return err
