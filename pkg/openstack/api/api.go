@@ -1354,6 +1354,7 @@ func (c *Client) FillingAvailablePool() {
 
 func (c *Client) RefreshAvailablePool() {
 	cpips := ipam.ListCiliumIPPool()
+	startTime := time.Now()
 	log.Infoln("#### ready to refresh available pool")
 	wg := sync.WaitGroup{}
 	for _, cpip := range cpips {
@@ -1373,6 +1374,8 @@ func (c *Client) RefreshAvailablePool() {
 		}
 	}
 	wg.Wait()
+	log.Infof("#### refresh available pool success, takes %s", time.Since(startTime))
+
 }
 
 func (c *Client) getPortCountBySubnetId(subnetId, networkId string) (int, error) {

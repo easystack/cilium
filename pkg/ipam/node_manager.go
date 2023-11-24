@@ -321,7 +321,7 @@ func (n *NodeManager) Upsert(resource *v2.CiliumNode) {
 			poolAvailable:       map[Pool]ipamTypes.AllocationMap{},
 		}
 
-		ctx, cancel := context.WithCancel(context.Background())
+		ctx, _ := context.WithCancel(context.Background())
 		// InstanceAPI is stale and the instances API is stable then do resync instancesAPI to sync instances
 		if !n.instancesAPI.HasInstance(resource.InstanceID()) && n.stableInstancesAPI {
 			if syncTime := n.instancesAPI.InstanceSync(ctx, resource.Spec.InstanceID); syncTime.IsZero() {
@@ -334,71 +334,28 @@ func (n *NodeManager) Upsert(resource *v2.CiliumNode) {
 
 		node.ops = n.instancesAPI.CreateNode(resource, node)
 
-		backoff := &backoff.Exponential{
-			Max:         5 * time.Minute,
-			Jitter:      true,
-			NodeManager: n,
-			Name:        fmt.Sprintf("ipam-pool-maintainer-%s", resource.Name),
-			ResetAfter:  10 * time.Minute,
-		}
-		poolMaintainer, err := trigger.NewTrigger(trigger.Parameters{
-			Name:            fmt.Sprintf("ipam-pool-maintainer-%s", resource.Name),
-			MinInterval:     10 * time.Millisecond,
-			MetricsObserver: n.metricsAPI.PoolMaintainerTrigger(),
-			TriggerFunc: func(reasons []string) {
-				if err := node.MaintainIPPool(ctx); err != nil {
-					node.logger().WithError(err).Warning("Unable to maintain ip pool of node")
-					backoff.Wait(ctx)
-				}
-			},
-			ShutdownFunc: cancel,
-		})
-		if err != nil {
-			node.logger().WithError(err).Error("Unable to create pool-maintainer trigger")
-			return
+		poolMaintainer := func() {
+			if err := node.MaintainIPPool(ctx); err != nil {
+				node.logger().WithError(err).Warning("Unable to maintain ip pool of node")
+			}
+			// don't worry... just metrics trigger
+			n.metricsAPI.PoolMaintainerTrigger()
 		}
 
-		retry, err := trigger.NewTrigger(trigger.Parameters{
-			Name:        fmt.Sprintf("ipam-pool-maintainer-%s-retry", resource.Name),
-			MinInterval: time.Minute, // large minimal interval to not retry too often
-			TriggerFunc: func(reasons []string) { poolMaintainer.Trigger() },
-		})
-		if err != nil {
-			node.logger().WithError(err).Error("Unable to create pool-maintainer-retry trigger")
-			return
-		}
-		node.retry = retry
-
-		k8sSync, err := trigger.NewTrigger(trigger.Parameters{
-			Name:            fmt.Sprintf("ipam-node-k8s-sync-%s", resource.Name),
-			MinInterval:     10 * time.Millisecond,
-			MetricsObserver: n.metricsAPI.K8sSyncTrigger(),
-			TriggerFunc: func(reasons []string) {
-				node.syncToAPIServer()
-			},
-		})
-		if err != nil {
-			poolMaintainer.Shutdown()
-			node.logger().WithError(err).Error("Unable to create k8s-sync trigger")
-			return
+		k8sSync := func() {
+			node.syncToAPIServer()
+			// don't worry... just metrics trigger
+			n.metricsAPI.K8sSyncTrigger()
 		}
 
-		instanceSync, err := trigger.NewTrigger(trigger.Parameters{
-			Name:            fmt.Sprintf("ipam-node-instance-sync-%s", resource.Name),
-			MinInterval:     10 * time.Millisecond,
-			MetricsObserver: n.metricsAPI.ResyncTrigger(),
-			TriggerFunc: func(reasons []string) {
-				if syncTime, ok := node.instanceAPISync(ctx, resource.InstanceID()); ok {
-					n.resyncNode(ctx, node, nil, syncTime)
-				}
-			},
-		})
-		if err != nil {
-			poolMaintainer.Shutdown()
-			k8sSync.Shutdown()
-			node.logger().WithError(err).Error("Unable to create instance-sync trigger")
-			return
+		instanceSync := func() {
+			if _, ok := node.instanceAPISync(ctx, resource.InstanceID()); ok {
+				n.resyncNodeWithoutPoolMaintainer(node)
+			}
+			// don't worry... just metrics trigger
+			n.metricsAPI.ResyncTrigger()
 		}
+
 		node.instanceSync = instanceSync
 
 		node.poolMaintainer = poolMaintainer
@@ -419,19 +376,6 @@ func (n *NodeManager) Delete(resource *v2.CiliumNode) {
 	n.mutex.Lock()
 
 	if node, ok := n.nodes[resource.Name]; ok {
-		if node.poolMaintainer != nil {
-			node.poolMaintainer.Shutdown()
-		}
-		if node.k8sSync != nil {
-			node.k8sSync.Shutdown()
-		}
-		if node.retry != nil {
-			node.retry.Shutdown()
-		}
-		if node.instanceSync != nil {
-			node.instanceSync.Shutdown()
-		}
-
 		n.instancesAPI.DeleteInstance(node.InstanceID())
 	}
 
@@ -497,6 +441,11 @@ type resyncStats struct {
 	nodeCapacity        int
 }
 
+func (n *NodeManager) resyncNodeWithoutPoolMaintainer(node *Node) {
+	node.recalculate()
+	node.k8sSync()
+}
+
 func (n *NodeManager) resyncNode(ctx context.Context, node *Node, stats *resyncStats, syncTime time.Time) {
 	node.updateLastResync(syncTime)
 	node.recalculate()
@@ -504,7 +453,7 @@ func (n *NodeManager) resyncNode(ctx context.Context, node *Node, stats *resyncS
 	releaseNeeded := node.releaseNeeded()
 	if allocationNeeded || releaseNeeded {
 		node.requirePoolMaintenance()
-		node.poolMaintainer.Trigger()
+		node.poolMaintainer()
 	}
 
 	if stats != nil {
@@ -540,7 +489,7 @@ func (n *NodeManager) resyncNode(ctx context.Context, node *Node, stats *resyncS
 		stats.mutex.Unlock()
 	}
 
-	node.k8sSync.Trigger()
+	node.k8sSync()
 }
 
 // Resync will attend all nodes and resolves IP deficits. The order of

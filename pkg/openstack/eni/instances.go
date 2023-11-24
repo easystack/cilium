@@ -65,9 +65,6 @@ func NewInstancesManager(api OpenStackAPI) *InstancesManager {
 // CreateNode is called on discovery of a new node and returns the ENI node
 // allocation implementation for the new node
 func (m *InstancesManager) CreateNode(obj *v2.CiliumNode, node *ipam.Node) ipam.NodeOperations {
-	m.mutex.Lock()
-	defer m.mutex.Unlock()
-	m.instances.UpdateInstance(obj.InstanceID(), nil)
 	return &Node{k8sObj: obj, manager: m, node: node, instanceID: obj.InstanceID()}
 }
 
@@ -98,7 +95,7 @@ func (m *InstancesManager) Resync(ctx context.Context) time.Time {
 	m.resyncLock.Lock()
 	defer m.resyncLock.Unlock()
 	// An empty instanceID indicates the full resync.
-	return m.resync(ctx, "")
+	return m.resync(ctx, "", true)
 }
 
 // GetSubnet returns the subnet by subnet ID
@@ -190,10 +187,10 @@ func (m *InstancesManager) InstanceSync(ctx context.Context, instanceID string) 
 	// but must block the full API resync.
 	m.resyncLock.RLock()
 	defer m.resyncLock.RUnlock()
-	return m.resync(ctx, instanceID)
+	return m.resync(ctx, instanceID, false)
 }
 
-func (m *InstancesManager) resync(ctx context.Context, instanceID string) time.Time {
+func (m *InstancesManager) resync(ctx context.Context, instanceID string, fullSync bool) time.Time {
 	resyncStart := time.Now()
 
 	var subnets ipamTypes.SubnetMap
@@ -201,7 +198,7 @@ func (m *InstancesManager) resync(ctx context.Context, instanceID string) time.T
 	// An empty instanceID indicates that this is full resync, ENIs from all instances
 	// will be refetched from EC2 API and updated to the local cache. Otherwise only
 	// the given instance will be updated.
-	if instanceID == "" {
+	if fullSync {
 		azs, err := m.api.GetAzs(ctx)
 		if err != nil {
 			log.WithError(err).Warning("Unable to synchronize AZ list")
@@ -254,8 +251,4 @@ func (m *InstancesManager) resync(ctx context.Context, instanceID string) time.T
 	}
 
 	return resyncStart
-}
-
-func (m *InstancesManager) getInstanceIdLocked() (instanceIds []string) {
-	return m.instances.GetInstanceIds()
 }
