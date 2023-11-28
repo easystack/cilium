@@ -49,10 +49,11 @@ var (
 )
 
 const (
-	defaultGCTime                  = time.Second * 10
-	defaultAssignTimeOut           = time.Minute * 4
-	defaultInUseTimeOut            = time.Minute * 2
-	defaultWaitingForAssignTimeOut = time.Minute * 1
+	defaultGCTime                   = time.Second * 10
+	defaultAssignTimeOut            = time.Minute * 4
+	defaultInUseTimeOut             = time.Minute * 2
+	defaultWaitingForAssignTimeOut  = time.Minute * 1
+	defaultWaitingForReleaseTimeOut = time.Minute * 1
 
 	DefaultMaxCreatePort     = 1024
 	DefaultCPIPWatermark     = "1"
@@ -378,6 +379,10 @@ func (extraManager) maintainStaticIPCRDs(stop <-chan struct{}) {
 						}
 					}
 				case v2alpha1.WaitingForRelease:
+					if !ipCopy.Status.UpdateTime.Add(defaultWaitingForReleaseTimeOut).After(now) {
+						return
+					}
+
 					// the operator maybe not handled the WaitingForRelease csip event, so we should update the csip to be processed
 					ipCopy.Status.UpdateTime = slim_metav1.Time(v1.Time{
 						Time: now,
