@@ -284,9 +284,13 @@ func (ipam *IPAM) allocateNextFamily(family Family, owner string, pool Pool, nee
 			ipCopy := csip.DeepCopy()
 			ipCopy.Status.IPStatus = v2alpha1.InUse
 			ipCopy.Spec.IP = result.IP.String()
-			err1 := ipam.staticIPManager.CreateStaticIP(ipCopy)
-			if err1 != nil {
-				log.Errorf("create csip: %s failed %s", owner, err1)
+			for retry := 0; retry < 2; retry++ {
+				err1 := ipam.staticIPManager.CreateStaticIP(ipCopy)
+				if err1 != nil {
+					log.Errorf("create csip: %s failed %s", owner, err1)
+				} else {
+					break
+				}
 			}
 		}
 	}(ipCrd)
