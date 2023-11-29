@@ -508,7 +508,7 @@ func (n *NodeManager) Resync(ctx context.Context, syncTime time.Time) {
 			continue
 		}
 		go func(node *Node, stats *resyncStats) {
-			log.Infof("####### node manager start to resyncNode: %s instanceID is %s", node.name, node.InstanceID())
+			log.Debugf("####### node manager start to resyncNode: %s instanceID is %s", node.name, node.InstanceID())
 			n.resyncNode(ctx, node, stats, syncTime)
 			sem.Release(1)
 		}(node, &stats)

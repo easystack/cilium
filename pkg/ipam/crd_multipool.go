@@ -336,9 +336,11 @@ func getPendingPodCountByPool(nodeName string, pool Pool) (int, error) {
 	for _, pod := range values {
 		p := pod.(*v1.Pod)
 		if p.Status.Phase == v1.PodPending {
-			if pool == "default" && p.Annotations == nil {
-				pendingPods++
-			} else if p.Annotations != nil && p.Annotations["ipam.cilium.io/ip-pool"] == string(pool) {
+			if pool == "default" {
+				if p.Annotations == nil || p.Annotations[customPool] == "" || p.Annotations[customPool] == "default" {
+					pendingPods++
+				}
+			} else if p.Annotations != nil && p.Annotations[customPool] == string(pool) {
 				pendingPods++
 			}
 		}
