@@ -273,6 +273,8 @@ func NewClient(metrics MetricsAPI, rateLimit float64, burst int, filters map[str
 							}
 
 							var returnToAvailablePool = func() {
+
+								log.Infof("ready to return port %s to available pool", portId)
 								poolDeviceId := AvailablePoolFakeDeviceID + record.pool
 								portName := fmt.Sprintf(FreePodInterfaceName+"-%s", randomString(10))
 								_, err = ports.Update(c.neutronV2, port.ID, ports.UpdateOpts{
@@ -281,6 +283,7 @@ func NewClient(metrics MetricsAPI, rateLimit float64, burst int, filters map[str
 								}).Extract()
 								if err == nil {
 									c.failureRecord.Delete(key)
+									log.Infof("return port %s to available pool success.", portId)
 								}
 								return
 							}
@@ -603,7 +606,7 @@ func (c *Client) AssignPrivateIPAddresses(ctx context.Context, eniID string, toA
 	var pids []string
 
 	if len(ps) != 0 {
-		log.Infof("####### ready to allocate %d ips for eni %s, get %d ports from available", toAllocate, eniID, len(ps))
+		log.Infof("####### ready to allocate %d ips for eni %s, get %d ports from available,ip is %#v", toAllocate, eniID, len(ps), ps)
 		for _, p := range ps {
 			if len(p.FixedIPs) == 0 {
 				log.Errorf("##### ops! no fixed ip found on port %s", p.ID)
