@@ -703,7 +703,7 @@ func (c *Client) UnassignPrivateIPAddresses(ctx context.Context, eniID string, a
 	}
 
 	if len(releasedIP) != len(addresses) {
-		log.Errorf("########### Not mach, expected is %s, actual is %s", addresses, releasedIP)
+		return fmt.Errorf("########### Not mach, expected is %s, actual is %s", addresses, releasedIP)
 	}
 
 	err = c.deletePortAllowedAddressPairs(eniID, allowedAddressPairs)
