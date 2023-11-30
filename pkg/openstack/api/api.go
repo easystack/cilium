@@ -902,7 +902,7 @@ func parseENI(port *ports.Port, subnets ipamTypes.SubnetMap) (instanceID string,
 		eni.Subnet.CIDR = subnet.CIDR.String()
 	}
 	if !ok {
-		log.Warningf("##### ops! parse eni failed,subnet ID: %s not found, port id is %s, device-id is %s", subnetID, port.ID, port.DeviceID)
+		return "", nil, fmt.Errorf("##### ops! parse eni failed,subnet ID: %s not found, port id is %s, device-id is %s", subnetID, port.ID, port.DeviceID)
 	}
 
 	var ipsets []eniTypes.PrivateIPSet
