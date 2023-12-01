@@ -404,7 +404,7 @@ func (c *Client) GetInstances(ctx context.Context, subnets ipamTypes.SubnetMap, 
 		}
 		id, eni, err := parseENI(&iface, subnets)
 		if err != nil {
-			log.Errorf("######## Failed to pares eni %+v, with error %s", iface, err)
+			log.Errorf("######## Failed to pares eni %s, with error %s", iface.Name, err)
 			continue
 		}
 
@@ -433,7 +433,7 @@ func (c *Client) GetInstance(ctx context.Context, subnets ipamTypes.SubnetMap, i
 		}
 		_, eni, err := parseENI(&iface, subnets)
 		if err != nil {
-			log.Errorf("######## Failed to pares eni %+v, with error %s", iface, err)
+			log.Errorf("######## Failed to pares eni %s, with error %s", iface.Name, err)
 			continue
 		}
 
