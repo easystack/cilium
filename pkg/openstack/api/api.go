@@ -607,7 +607,7 @@ func (c *Client) AssignPrivateIPAddresses(ctx context.Context, eniID string, toA
 	var pids []string
 
 	if len(ps) != 0 {
-		log.Infof("####### ready to allocate %d ips for eni %s, get %d ports from available,ip is %#v", toAllocate, eniID, len(ps), ps)
+		log.Infof("####### ready to allocate %d ips for eni %s, get %d ports from available", toAllocate, eniID, len(ps))
 		for _, p := range ps {
 			if len(p.FixedIPs) == 0 {
 				log.Errorf("##### ops! no fixed ip found on port %s", p.ID)
@@ -1072,6 +1072,10 @@ func (c *Client) UnassignPrivateIPAddressesRetainPort(ctx context.Context, vpcID
 				MACAddress: port.MACAddress,
 			},
 		})
+		if err != nil {
+			log.Errorf("delete allowed address pair from eni %s failed ,error is %s, address is %s", port.ID, err, address)
+			return err
+		}
 	}
 
 	emptyDeviceID := ""
@@ -1171,6 +1175,10 @@ func (c *Client) DeleteNeutronPort(address string, networkID string, portId stri
 			return nil
 		}
 		return err
+	}
+
+	if port.DeviceID != "" {
+		return fmt.Errorf("port's DeviceID is not empty can not return to pool, device id is %s", port.DeviceID)
 	}
 
 	poolDeviceId := AvailablePoolFakeDeviceID + pool
