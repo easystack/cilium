@@ -17,6 +17,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/cilium/cilium/pkg/controller"
@@ -660,6 +661,8 @@ func (c *Client) AssignPrivateIPAddresses(ctx context.Context, eniID string, toA
 			}
 			log.Errorf("######## Failed to add allowed address pairs: %s, with error %s, pairs: %+v", eniID, err, pairs)
 			return nil, err
+		} else {
+			log.Infof("######## Added allowed address pairs %+v for eni %s success", addresses, eniID)
 		}
 	} else {
 		log.Infof("######## No need to add allowed address pairs %+v", pairs)
@@ -1209,15 +1212,31 @@ func (c *Client) bulkCreatePort(opts []BulkCreatePortsOpts) {
 	}
 
 	now := time.Now()
-	var err error
-	defer func() {
+	ConcurrentCount := DefaultCreatePortsInBulk
+	if operatorOption.Config.OpenstackCreatePortsStep != 0 {
+		ConcurrentCount = operatorOption.Config.OpenstackCreatePortsStep
+	}
+
+	sem := semaphore.NewWeighted(int64(ConcurrentCount))
+	successCount := atomic.Int32{}
+	for _, port := range copts.Ports {
+		err := sem.Acquire(context.TODO(), 1)
 		if err != nil {
-			log.Errorf("create %d ports in bulk failed, takes time %s, error is %s.", len(copts.Ports), time.Since(now), err)
-		} else {
-			log.Infof("create %d ports in bulk success, takes time %s.", len(copts.Ports), time.Since(now))
+			continue
 		}
-	}()
-	_, err = ports.BulkCreate(c.neutronV2, copts).Extract()
+		go func(option ports.CreateOpts) {
+			defer sem.Release(1)
+			_, err = ports.Create(c.neutronV2, option).Extract()
+			if err == nil {
+				successCount.Add(1)
+			} else {
+				log.Errorf("create port  %s failed, error is %s", option.Name, err)
+			}
+		}(port)
+	}
+	sem.Acquire(context.TODO(), int64(ConcurrentCount))
+	log.Infof("create %d ports,success %d  takes time %s.", len(copts.Ports), successCount.Load(), time.Since(now))
+	// _, err = ports.BulkCreate(c.neutronV2, copts).Extract()
 }
 
 func (c *Client) FillingAvailablePool() {
