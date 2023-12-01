@@ -1369,7 +1369,6 @@ func (c *Client) FillingAvailablePool() {
 	sem.Acquire(context.TODO(), 5)
 
 	if len(opts) > 0 {
-		log.Infof("###### ready to call bulkCreatePort, opts is %+v", opts)
 		c.bulkCreatePort(opts)
 	}
 }
