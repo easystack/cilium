@@ -216,7 +216,7 @@ func (ipam *IPAM) allocateNextFamily(family Family, owner string, pool Pool, nee
 						return
 					case v2alpha1.Assigned:
 						updateTime := ipCopy.Status.UpdateTime.Time
-						if !now.Before(updateTime.Add(defaultAssignTimeOut).Add(time.Second * -5)) {
+						if !now.Before(updateTime.Add(defaultAssignTimeOut).Add(time.Second * -15)) {
 							return
 						}
 						ip := net.ParseIP(ipCopy.Spec.IP)
