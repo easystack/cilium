@@ -39,7 +39,6 @@ var (
 // info: The interface routing info used to create rules and routes.
 // mtu: The interface MTU.
 func (info *RoutingInfo) Configure(ip net.IP, mtu int, compat bool) error {
-	log.Infof("############ RouteInfo is %v, address is %v, gateway is %v", *info, ip, info.IPv4Gateway)
 	if ip.To4() == nil {
 		log.WithFields(logrus.Fields{
 			"endpointIP": ip,

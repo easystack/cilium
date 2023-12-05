@@ -67,8 +67,6 @@ func (h *postIPAM) Handle(params ipamapi.PostIpamParams) middleware.Responder {
 			ExpirationUUID:  ipv4Result.ExpirationUUID,
 			InterfaceNumber: ipv4Result.InterfaceNumber,
 		}
-
-		log.Infof("########## ipv4Result is %v, ip is %s, gateway is %s", resp.IPV4, ipv4Result.IP.String(), ipv4Result.GatewayIP)
 	}
 
 	if ipv6Result != nil {
