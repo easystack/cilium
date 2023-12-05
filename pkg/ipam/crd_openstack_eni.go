@@ -6,6 +6,7 @@ package ipam
 import (
 	"errors"
 	"net"
+	"strings"
 
 	"github.com/vishvananda/netlink"
 
@@ -41,7 +42,7 @@ func configureOpenStackENIs(oldNode, newNode *ciliumv2.CiliumNode, mtuConfig Mtu
 
 		if _, ok := existingENIByName[id]; !ok {
 			log.Infof("Add address for eni %s", id)
-			addedENIByMac[eni.MAC] = eniDeviceConfig{
+			addedENIByMac[strings.ToLower(eni.MAC)] = eniDeviceConfig{
 				name: eni.ID,
 				ip:   net.ParseIP(eni.IP),
 			}
