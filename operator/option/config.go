@@ -259,6 +259,9 @@ const (
 	// OpenStackHttpTimeout defines openstack client http timeout
 	OpenStackHttpTimeout = "openstack-http-timeout"
 
+	// OpenStackGateWayIndex defines index of cidr as gateway address
+	OpenStackGateWayIndex = "openstack-gateway-index"
+
 	// OpenStackMaxNics defines max nics per vm
 	OpenStackMaxNics = "openstack-max-nics"
 
@@ -568,6 +571,9 @@ type OperatorConfig struct {
 	// OpenStack api http timeout
 	OpenStackHttpTimeout int
 
+	// OpenStack gateway address index
+	OpenStackGateWayIndex int
+
 	// OpenStack max nics per vm
 	OpenStackMaxNics int
 
@@ -776,6 +782,7 @@ func (c *OperatorConfig) Populate(vp *viper.Viper) {
 	c.OpenstackCreatePortsInterval = vp.GetInt(OpenstackDefaultCreatePortsInterval)
 	c.OpenStackSecurityGroupIDs = vp.GetString(OpenStackSecurityGroupIDs)
 	c.OpenStackHttpTimeout = vp.GetInt(OpenStackHttpTimeout)
+	c.OpenStackGateWayIndex = vp.GetInt(OpenStackGateWayIndex)
 	c.OpenStackMaxNics = vp.GetInt(OpenStackMaxNics)
 	c.OpenStackMaxV4PodIPs = vp.GetInt(OpenStackMaxV4PodIPs)
 	c.OpenStackMaxV6PodIPs = vp.GetInt(OpenStackMaxV6PodIPs)
