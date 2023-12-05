@@ -787,6 +787,7 @@ func deriveGatewayIP(cidr string, index int) string {
 		return ""
 	}
 	gw := ip.GetIPAtIndex(*ipNet, int64(index))
+	log.Warningf("########### cidr is %s, ipNet is %v, index is %d, gw is %s ", cidr, *ipNet, index, gw)
 	if gw == nil {
 		return ""
 	}
@@ -886,6 +887,8 @@ func (a *crdAllocator) buildAllocationResult(ip net.IP, ipInfo *ipamTypes.Alloca
 				}
 				result.InterfaceNumber = strconv.Itoa(openStack.GetENIIndexFromTags(eni.Tags))
 				result.IPPoolName = Pool(ipInfo.Pool)
+
+
 				return
 			}
 		}

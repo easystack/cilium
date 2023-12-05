@@ -314,6 +314,7 @@ func (ipam *IPAM) allocateNextFamily(family Family, owner string, pool Pool, nee
 		if ownedBy, ok := ipam.isIPExcluded(result.IP, pool); !ok || ownedBy == owner {
 			log.WithFields(logrus.Fields{
 				"ip":    result.IP.String(),
+				"gateway": result.GatewayIP,
 				"pool":  result.IPPoolName,
 				"owner": owner,
 			}).Debugf("Allocated random IP")
