@@ -45,6 +45,9 @@ var (
 )
 
 const (
+	// OpenStackGateWayIndex defines index of cidr as gateway address
+	OpenStackGateWayIndex = "openstack-gateway-index"
+
 	// AgentHealthPort is the TCP port for agent health status API
 	AgentHealthPort = "agent-health-port"
 
@@ -1446,6 +1449,9 @@ type DaemonConfig struct {
 
 	// Monitor contains the configuration for the node monitor.
 	Monitor *models.MonitorStatus
+
+	// OpenStackGateWayIndex defines index of cidr as gateway address
+	OpenStackGateWayIndex int
 
 	// AgentHealthPort is the TCP port for agent health status API
 	AgentHealthPort int
@@ -2948,6 +2954,7 @@ func (c *DaemonConfig) parseExcludedLocalAddresses(s []string) error {
 func (c *DaemonConfig) Populate(vp *viper.Viper) {
 	var err error
 
+	c.OpenStackGateWayIndex = vp.GetInt(OpenStackGateWayIndex)
 	c.AgentHealthPort = vp.GetInt(AgentHealthPort)
 	c.ClusterHealthPort = vp.GetInt(ClusterHealthPort)
 	c.ClusterMeshHealthPort = vp.GetInt(ClusterMeshHealthPort)

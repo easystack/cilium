@@ -24,7 +24,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/tools/cache"
 
-	operatorOption "github.com/cilium/cilium/operator/option"
 	openStack "github.com/cilium/cilium/pkg/openstack/utils"
 
 	alibabaCloud "github.com/cilium/cilium/pkg/alibabacloud/utils"
@@ -883,7 +882,7 @@ func (a *crdAllocator) buildAllocationResult(ip net.IP, ipInfo *ipamTypes.Alloca
 					result.CIDRs = append(result.CIDRs, a.conf.GetIPv4NativeRoutingCIDR().String())
 				}
 				if eni.Subnet.CIDR != "" {
-					result.GatewayIP = deriveGatewayIP(eni.Subnet.CIDR, operatorOption.Config.OpenStackGateWayIndex)
+					result.GatewayIP = deriveGatewayIP(eni.Subnet.CIDR, option.Config.OpenStackGateWayIndex)
 				}
 				result.InterfaceNumber = strconv.Itoa(openStack.GetENIIndexFromTags(eni.Tags))
 				result.IPPoolName = Pool(ipInfo.Pool)
