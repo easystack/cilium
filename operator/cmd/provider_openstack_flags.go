@@ -23,6 +23,8 @@ func init() {
 	option.BindEnv(Vp, operatorOption.OpenStackSecurityGroupIDs)
 	flags.Int(operatorOption.OpenStackHttpTimeout, 60, "OpenStack client http timeout")
 	option.BindEnv(Vp, operatorOption.OpenStackHttpTimeout)
+	flags.Int(operatorOption.OpenStackGateWayIndex, -2, "use index of subnet cidr address as gateway")
+	option.BindEnv(Vp, operatorOption.OpenStackGateWayIndex)
 	flags.Int(operatorOption.OpenStackMaxNics, 6, "Max number of nics on one vm")
 	option.BindEnv(Vp, operatorOption.OpenStackMaxNics)
 	flags.Int(operatorOption.OpenStackMaxV4PodIPs, 100, "Max number of ipv4 pod ips on one vm nic")
