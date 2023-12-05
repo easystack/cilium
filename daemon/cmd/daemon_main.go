@@ -155,6 +155,9 @@ func initializeFlags() {
 	})
 
 	// Env bindings
+	flags.Int(option.OpenStackGateWayIndex, defaults.OpenStackGateWayIndex, "OpenStackGateWayIndex defines index of cidr as gateway address")
+	option.BindEnv(Vp, option.OpenStackGateWayIndex)
+
 	flags.Int(option.AgentHealthPort, defaults.AgentHealthPort, "TCP port for agent health status API")
 	option.BindEnv(Vp, option.AgentHealthPort)
 
