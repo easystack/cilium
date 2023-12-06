@@ -8,6 +8,8 @@ import (
 	"errors"
 	"fmt"
 	operatorOption "github.com/cilium/cilium/operator/option"
+	"golang.org/x/time/rate"
+	"k8s.io/client-go/util/workqueue"
 	"math"
 	"math/rand"
 	"net"
@@ -85,6 +87,10 @@ var maxAttachRetries = wait.Backoff{
 	Cap:      0,
 }
 
+var (
+	allowedAddressPairHandler allowedAddressPairProcess
+)
+
 // Client an OpenStack API client
 type Client struct {
 	neutronV2  *gophercloud.ServiceClient
@@ -103,6 +109,83 @@ type Client struct {
 	fillingAvailPool      *trigger.Trigger
 	syncAvailablePoolTime time.Time
 	inCreatingProgress    bool
+}
+
+type allowedAddressPairJobType int
+
+const (
+	addAllowedAddressPairJob allowedAddressPairJobType = iota
+	deleteAllowedAddressPairJob
+)
+
+type processJob struct {
+	ch          chan error
+	processType allowedAddressPairJobType
+	eniId       string
+	pairs       []ports.AddressPair
+}
+
+type allowedAddressPairProcess struct {
+	sync.Mutex
+	receipts map[string]struct{}
+	jobList  workqueue.RateLimitingInterface
+	client   *Client
+}
+
+// processNextWorkItem process all events from the workqueue.
+func (p *allowedAddressPairProcess) processNextWorkItem() bool {
+	job, quit := p.jobList.Get()
+	if quit {
+		return false
+	}
+	pj := job.(*processJob)
+	defer p.jobList.Done(job)
+	p.Mutex.Lock()
+	if _, exist := p.receipts[pj.eniId]; exist {
+		p.jobList.AddRateLimited(pj)
+		p.Mutex.Unlock()
+		return true
+	}
+	p.receipts[pj.eniId] = struct{}{}
+	p.Mutex.Unlock()
+	go func(pj *processJob) {
+		defer func() {
+			p.jobList.Forget(job)
+			p.Mutex.Lock()
+			delete(p.receipts, pj.eniId)
+			p.Mutex.Unlock()
+		}()
+		switch pj.processType {
+		case addAllowedAddressPairJob:
+			pj.ch <- p.client.addPortAllowedAddressPairs(pj.eniId, pj.pairs)
+		case deleteAllowedAddressPairJob:
+			pj.ch <- p.client.deletePortAllowedAddressPairs(pj.eniId, pj.pairs)
+		}
+	}(pj)
+
+	return true
+
+}
+
+func (p *allowedAddressPairProcess) Run() {
+	go func() {
+		for p.processNextWorkItem() {
+		}
+	}()
+}
+
+func (p *allowedAddressPairProcess) ExecuteAllowedAddressPairJob(j allowedAddressPairJobType, eniId string, pairs []ports.AddressPair) error {
+	ch := make(chan error)
+	defer close(ch)
+	pj := &processJob{
+		processType: j,
+		ch:          ch,
+		eniId:       eniId,
+		pairs:       pairs,
+	}
+	p.jobList.Add(pj)
+	err := <-pj.ch
+	return err
 }
 
 type poolAvailable struct {
@@ -232,6 +315,20 @@ func NewClient(metrics MetricsAPI, rateLimit float64, burst int, filters map[str
 	if err != nil {
 		return nil, err
 	}
+
+	allowedAddressPairHandler = allowedAddressPairProcess{
+		receipts: map[string]struct{}{},
+		jobList: workqueue.NewRateLimitingQueueWithConfig(workqueue.NewMaxOfRateLimiter(
+			workqueue.NewItemExponentialFailureRateLimiter(5*time.Second, 60*time.Second),
+			// 20 qps, 100 bucket size.  This is only for retry speed and its only the overall factor (not per item)
+			&workqueue.BucketRateLimiter{Limiter: rate.NewLimiter(rate.Limit(20), 500)},
+		),
+			workqueue.RateLimitingQueueConfig{},
+		),
+		client: c,
+	}
+
+	allowedAddressPairHandler.Run()
 
 	go func() {
 		runInterval := 60
@@ -652,7 +749,7 @@ func (c *Client) AssignPrivateIPAddresses(ctx context.Context, eniID string, toA
 	}
 
 	if len(pids) > 0 {
-		err = c.addPortAllowedAddressPairs(eniID, pairs)
+		err = allowedAddressPairHandler.ExecuteAllowedAddressPairJob(addAllowedAddressPairJob, eniID, pairs)
 		if err != nil {
 			recordTime := time.Now()
 			for _, id := range pids {
@@ -709,8 +806,7 @@ func (c *Client) UnassignPrivateIPAddresses(ctx context.Context, eniID string, a
 	if len(releasedIP) != len(addresses) {
 		return fmt.Errorf("########### Not mach, expected is %s, actual is %s", addresses, releasedIP)
 	}
-
-	err = c.deletePortAllowedAddressPairs(eniID, allowedAddressPairs)
+	err = allowedAddressPairHandler.ExecuteAllowedAddressPairJob(deleteAllowedAddressPairJob, eniID, allowedAddressPairs)
 	if err != nil {
 		log.Errorf("######## Failed to update port allowed-address-pairs with error: %+v", err)
 		return err
@@ -1072,12 +1168,8 @@ func (c *Client) UnassignPrivateIPAddressesRetainPort(ctx context.Context, vpcID
 	if idx == -1 {
 		log.Errorf("no address found attached in eni %v", secondaryIpPort.ID)
 	} else {
-		err = c.deletePortAllowedAddressPairs(port.ID, []ports.AddressPair{
-			{
-				IPAddress:  address,
-				MACAddress: port.MACAddress,
-			},
-		})
+		pair := []ports.AddressPair{{IPAddress: address, MACAddress: port.MACAddress}}
+		err = allowedAddressPairHandler.ExecuteAllowedAddressPairJob(deleteAllowedAddressPairJob, port.ID, pair)
 		if err != nil {
 			log.Errorf("delete allowed address pair from eni %s failed ,error is %s, address is %s", port.ID, err, address)
 			return err
@@ -1153,12 +1245,8 @@ func (c *Client) AssignStaticPrivateIPAddresses(ctx context.Context, eniID strin
 			return p.ID, nil
 		}
 	}
-	err = c.addPortAllowedAddressPairs(eniID, []ports.AddressPair{
-		{
-			IPAddress:  address,
-			MACAddress: port.MACAddress,
-		},
-	})
+	pair := []ports.AddressPair{{IPAddress: address, MACAddress: port.MACAddress}}
+	err = allowedAddressPairHandler.ExecuteAllowedAddressPairJob(addAllowedAddressPairJob, eniID, pair)
 	if err != nil {
 		log.Errorf("######## Failed to update port allowed-address-pairs with error: %+v", err)
 		return "", err
