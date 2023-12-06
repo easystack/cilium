@@ -464,6 +464,10 @@ func (in *Subnet) DeepEqual(other *Subnet) bool {
 		}
 	}
 
+	if in.GatewayIP != other.GatewayIP {
+		return false
+	}
+
 	return true
 }
 

@@ -880,7 +880,9 @@ func (a *crdAllocator) buildAllocationResult(ip net.IP, ipInfo *ipamTypes.Alloca
 				if a.conf.GetIPv4NativeRoutingCIDR() != nil {
 					result.CIDRs = append(result.CIDRs, a.conf.GetIPv4NativeRoutingCIDR().String())
 				}
-				if eni.Subnet.CIDR != "" {
+				if eni.Subnet.GatewayIP != "" {
+					result.GatewayIP = eni.Subnet.GatewayIP
+				} else {
 					result.GatewayIP = deriveGatewayIP(eni.Subnet.CIDR, option.Config.OpenStackGateWayIndex)
 				}
 				result.InterfaceNumber = strconv.Itoa(openStack.GetENIIndexFromTags(eni.Tags))

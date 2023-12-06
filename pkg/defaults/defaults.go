@@ -9,7 +9,7 @@ import (
 
 const (
 	// OpenStackGateWayIndex defines index of cidr as gateway address
-	OpenStackGateWayIndex = -2
+	OpenStackGateWayIndex = 1
 
 	// AgentHealthPort is the default value for option.AgentHealthPort
 	AgentHealthPort = 9879

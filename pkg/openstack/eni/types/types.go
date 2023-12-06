@@ -144,4 +144,7 @@ type Subnet struct {
 
 	// CIDR is the CIDR range associated with the subnet
 	CIDR string `json:"cidr,omitempty"`
+
+	// GatewayIP is the subnet's GatewayIP
+	GatewayIP string `json:"gateway-ip,omitempty"`
 }

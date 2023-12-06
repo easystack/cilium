@@ -303,6 +303,9 @@ type Subnet struct {
 
 	// Tags is the tags of the subnet
 	Tags Tags
+
+	// Default gateway used by devices in this subnet.
+	GatewayIP string
 }
 
 // SubnetMap indexes subnets by subnet ID

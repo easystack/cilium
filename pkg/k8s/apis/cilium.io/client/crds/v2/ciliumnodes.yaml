@@ -834,6 +834,9 @@ spec:
                               description: CIDR is the CIDR range associated with
                                 the subnet
                               type: string
+                            gateway-ip:
+                              description: GatewayIP is the subnet's GatewayIP
+                              type: string
                             id:
                               description: ID is the ID of the subnet
                               type: string
