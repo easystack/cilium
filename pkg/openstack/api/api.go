@@ -489,6 +489,7 @@ func (c *Client) GetSubnets(ctx context.Context) (ipamTypes.SubnetMap, error) {
 			VirtualNetworkID:   s.NetworkID,
 			CIDR:               c,
 			AvailableAddresses: FakeAddresses,
+			GatewayIP:          s.GatewayIP,
 		}
 
 		subnets[subnet.ID] = subnet
@@ -901,8 +902,13 @@ func parseENI(port *ports.Port, subnets ipamTypes.SubnetMap) (instanceID string,
 	}
 
 	subnet, ok := subnets[subnetID]
-	if ok && subnet.CIDR != nil {
-		eni.Subnet.CIDR = subnet.CIDR.String()
+	if ok {
+		if subnet.CIDR != nil {
+			eni.Subnet.CIDR = subnet.CIDR.String()
+		}
+		if subnet.GatewayIP != "" {
+			eni.Subnet.GatewayIP = subnet.GatewayIP
+		}
 	}
 	if !ok {
 		return "", nil, fmt.Errorf("##### ops! parse eni failed,subnet ID: %s not found, port id is %s, device-id is %s", subnetID, port.ID, port.DeviceID)
