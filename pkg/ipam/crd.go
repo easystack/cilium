@@ -578,6 +578,13 @@ func (n *nodeStore) refreshNode() error {
 		a.mutex.RUnlock()
 	}
 
+	csips := n.csipMgr.ListLocalReleasedCSIP()
+	for _, csip := range csips {
+		if _, exist := n.ipsToPool[csip.Spec.IP]; !exist {
+			n.csipMgr.DeleteCSIP(csip.Namespace, csip.Name)
+		}
+	}
+
 	var err error
 	_, err = n.clientset.CiliumV2().CiliumNodes().UpdateStatus(context.TODO(), node, metav1.UpdateOptions{})
 
