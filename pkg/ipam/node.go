@@ -1060,7 +1060,7 @@ func (n *Node) AllocateStaticIP(ip string, pool Pool, portId string) (string, st
 		return portId, eniId, nil
 	}
 
-	return "", "", fmt.Errorf("No interface available. ")
+	return "", "", err
 }
 
 // CrdPools returns the IP allocation pool available to the node

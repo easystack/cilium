@@ -14,6 +14,7 @@ const (
 	Idle              = "Idle"
 	Assigned          = "Assigned"
 	WaitingForRelease = "WaitingForRelease"
+	Released          = "Released"
 	Unbind            = "Unbind"
 )
 
