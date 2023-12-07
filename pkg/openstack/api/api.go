@@ -1116,10 +1116,13 @@ func (c *Client) AssignStaticPrivateIPAddresses(ctx context.Context, eniID strin
 
 	if err != nil {
 		log.Errorf("######## Failed to get port, id: %s, address: %s, with error %s", portId, address, err)
+		return "", err
 	}
 
 	if p != nil && p.DeviceID != "" {
-		return "", errors.New("port for static pod is not empty, allocate cancel")
+		if p.DeviceID != eniID {
+			return "", errors.New("port for static pod is not empty, allocate cancel")
+		}
 	}
 
 	if p == nil {
