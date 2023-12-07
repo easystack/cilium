@@ -239,10 +239,4 @@ func PoolOrDefault(pool string) Pool {
 // WithStaticIPManager set
 func (ipam *IPAM) WithStaticIPManager(m *staticip.Manager) {
 	ipam.staticIPManager = m
-
-	for _, csip := range m.ListStaticIPs() {
-		if ip := net.ParseIP(csip.Spec.IP).To4(); ip != nil {
-			ipam.ExcludeIP(ip, csip.Namespace+"/"+csip.Name, Pool(csip.Spec.Pool))
-		}
-	}
 }

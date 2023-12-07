@@ -7,8 +7,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/cilium/cilium/pkg/ipam/staticip"
 	"github.com/cilium/cilium/pkg/k8s/apis/cilium.io/v2alpha1"
-	v1 "github.com/cilium/cilium/pkg/k8s/slim/k8s/apis/meta/v1"
 	nodeTypes "github.com/cilium/cilium/pkg/node/types"
 	k8sErr "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -179,91 +179,64 @@ func (ipam *IPAM) allocateNextFamily(family Family, owner string, pool Pool, nee
 				if err != nil && !k8sErr.IsNotFound(err) {
 					return
 				} else if k8sErr.IsNotFound(err) {
-					ipCrd = &v2alpha1.CiliumStaticIP{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: v2alpha1.CiliumStaticIPAPIVersion,
-							Kind:       v2alpha1.CiliumStaticIPKind,
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      name,
-							Namespace: namespace,
-						},
-						Spec: v2alpha1.StaticIPSpec{
-							Pool:        string(pool),
-							NodeName:    nodeTypes.GetName(),
-							RecycleTime: recycleTime,
-						},
-						Status: v2alpha1.StaticIPStatus{},
-					}
+					ipCrd = staticip.NewUpdateCSIPOption().BuildNewCsip(name, namespace, pool.String(), recycleTime)
 				} else {
-					ipCopy := ipCrd.DeepCopy()
 					now := time.Now()
-					switch ipCopy.Status.IPStatus {
+					switch ipCrd.Status.IPStatus {
 					case v2alpha1.WaitingForAssign:
-						err = fmt.Errorf("cilium static ip crd is not ready,status is %s, still waiting for next assign", v2alpha1.WaitingForAssign)
+						err = errors.New("the ip address is waiting for scheduling")
 						return
 					case v2alpha1.Unbind:
-						ipCopy.Status.IPStatus = v2alpha1.WaitingForAssign
-						ipCopy.Status.UpdateTime = v1.Time{
-							Time: now,
-						}
-						ipCopy.Spec.NodeName = nodeTypes.GetName()
-						err = ipam.staticIPManager.UpdateStaticIPStatus(ipCopy)
-						if err != nil {
-							log.Errorf("update static ip: %s for pod: %s failed.", ipCopy.Spec.IP, owner)
-						}
-						err = fmt.Errorf("cilium static ip crd is not ready,status is %s, still waiting for next assign", v2alpha1.Unbind)
-						return
-					case v2alpha1.Assigned:
-						updateTime := ipCopy.Status.UpdateTime.Time
-						if !now.Before(updateTime.Add(defaultAssignTimeOut).Add(time.Second * -15)) {
+						if !now.Before(ipCrd.Status.UpdateTime.Add(time.Second * time.Duration(ipCrd.Spec.RecycleTime))) {
+							err = fmt.Errorf("ciliumStaticIP CR is expired, waiting for release and recreate")
 							return
 						}
-						ip := net.ParseIP(ipCopy.Spec.IP)
+						option := staticip.NewUpdateCSIPOption().
+							WithStatus(v2alpha1.WaitingForAssign).
+							WithNodeName(nodeTypes.GetName())
+						ipam.staticIPManager.UpdateStaticIP(ipCrd, option)
+						err = errors.New("the ip address is waiting for scheduling")
+						return
+					case v2alpha1.Assigned:
+						// The purpose here is that when pod and ip are scheduled to a node,
+						// pod is deleted before pod is started, and pod is scheduled to another node,
+						// but ip is still Assigned
+						if ipCrd.Spec.NodeName != nodeTypes.GetName() {
+							option := staticip.NewUpdateCSIPOption().
+								WithStatus(v2alpha1.Idle).
+								WithRecycleTime(recycleTime)
+							ipam.staticIPManager.UpdateStaticIP(ipCrd, option)
+							err = errors.New("the ip address is on another node, now unbind it")
+							return
+						}
+
+						ip := net.ParseIP(ipCrd.Spec.IP)
 
 						result, err = ipam.allocateIPWithoutLock(ip, owner, pool, true)
 						if err != nil {
-							if now.Sub(updateTime) > time.Second*60 {
-								ipCopy.Status.IPStatus = v2alpha1.Idle
-								ipCopy.Status.UpdateTime = v1.Time{
-									Time: now,
-								}
-								err1 := ipam.staticIPManager.UpdateStaticIPStatus(ipCopy)
-								if err1 != nil {
-									log.Errorf("update static ip: %s for pod: %s failed.", ipCopy.Spec.IP, owner)
-								}
-							}
-							err = fmt.Errorf("cilium static ip status is %s, but allocate failed, error is %s, still waiting for next assign", v2alpha1.Assigned, err)
+							log.Errorf("### Allocate csip %s for pod failed, error is %s, status is Assigned ", ip, err)
 							return
 						}
-						ipCopy.Status.IPStatus = v2alpha1.InUse
-						ipCopy.Spec.RecycleTime = recycleTime
-						ipCopy.Status.UpdateTime = v1.Time{
-							Time: now,
-						}
-						ipCopy.Spec.ENIId = result.Resource
-						err = ipam.staticIPManager.UpdateStaticIPStatus(ipCopy)
-						if err != nil {
-							return
-						}
-						log.Infof("assigned static ip: %s for pod: %s success.", ip, owner)
+						option := staticip.NewUpdateCSIPOption().
+							WithStatus(v2alpha1.InUse).
+							WithRecycleTime(recycleTime)
+						ipam.staticIPManager.UpdateStaticIP(ipCrd, option)
 						return
 					case v2alpha1.InUse:
-						ip := net.ParseIP(ipCopy.Spec.IP)
-						if (ipam.getIPOwner(ipCopy.Spec.IP, pool) == "" || ipam.getIPOwner(ipCopy.Spec.IP, pool) == owner) && ipCopy.Spec.NodeName == nodeTypes.GetName() {
+						if ipCrd.Spec.NodeName != nodeTypes.GetName() {
+							option := staticip.NewUpdateCSIPOption().
+								WithStatus(v2alpha1.Idle)
+							ipam.staticIPManager.UpdateStaticIP(ipCrd, option)
+							err = errors.New("the ip address is waiting for scheduling")
+							return
+						}
+						ip := net.ParseIP(ipCrd.Spec.IP)
+						if ipam.getIPOwner(ipCrd.Spec.IP, pool) == "" || ipam.getIPOwner(ipCrd.Spec.IP, pool) == owner {
 							result, err = ipam.allocateIPWithoutLock(ip, owner, pool, true)
-							if err == nil {
-								return result, err
-							}
-							log.Errorf("allocate static for pod %s failed ,error is %s, status is %s.", owner, err, v2alpha1.InUse)
+							return result, err
 						}
-						log.Errorf("reAllocate static for pod %s failed ,csip's node is %s, but pod's node is %s, status is %s.", owner, ipCopy.Spec.NodeName, nodeTypes.GetName(), v2alpha1.InUse)
-						ipCopy.Status.IPStatus = v2alpha1.Idle
-						ipCopy.Spec.NodeName = nodeTypes.GetName()
-						ipCopy.Status.UpdateTime = v1.Time{
-							Time: now,
-						}
-						err = ipam.staticIPManager.UpdateStaticIPStatus(ipCopy)
+						log.Errorf("reAllocate static for pod %s failed ,csip's node is %s, but pod's node is %s, status is %s.", owner, ipCrd.Spec.NodeName, nodeTypes.GetName(), v2alpha1.InUse)
+						err = errors.New("csip status is abnormal, if the exception persists, contact cloud manager")
 						return
 					default:
 						log.Errorf("unknown status")
@@ -438,27 +411,23 @@ func (ipam *IPAM) releaseIPLocked(ip net.IP, pool Pool) error {
 	}
 	if policy, _, err := ipam.determineIPPolicy(owner); err == nil {
 		if policy == "true" {
-			if namespace, name, ok := splitK8sPodName(owner); ok {
-				ipCrd, err := ipam.staticIPManager.StaticIPInterface.CiliumStaticIPs(namespace).Get(context.TODO(), name, metav1.GetOptions{})
+			ipCrd, err := ipam.staticIPManager.GetStaticIPForPod(owner)
+			if err != nil {
+				if k8sErr.IsNotFound(err) {
+					return nil
+				}
+				log.Infof("get csip: %s failed, error is: %s", owner, err)
+				return err
+			}
+			if ipCrd != nil {
+				option := staticip.NewUpdateCSIPOption().WithStatus(v2alpha1.Idle)
+				err = ipam.staticIPManager.UpdateStaticIP(ipCrd, option)
 				if err != nil {
-					if k8sErr.IsNotFound(err) {
-						return nil
-					}
-					log.Infof("get csip: %s failed, error is: %s", owner, err)
+					log.Errorf("update csip: %s failed, error is: %s.", owner, err)
 					return err
 				}
-				if ipCrd != nil {
-					ipCopy := ipCrd.DeepCopy()
-					ipCopy.Status.IPStatus = v2alpha1.Idle
-					ipCopy.Status.UpdateTime = v1.Time{
-						Time: time.Now(),
-					}
-					err = ipam.staticIPManager.UpdateStaticIPStatus(ipCopy)
-					if err != nil {
-						log.Infof("update csip: %s failed, error is: %s.", owner, err)
-					}
-				}
 			}
+
 		}
 	}
 
