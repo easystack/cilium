@@ -99,7 +99,7 @@ func poolsInit(poolGetter v2alpha12.CiliumPodIPPoolsGetter, stopCh <-chan struct
 // staticIPInit starts up a node watcher to handle csip events.
 func staticIPInit(ipGetter v2alpha12.CiliumStaticIPsGetter, stopCh <-chan struct{}) {
 	ciliumStaticIPManagerQueue = workqueue.NewRateLimitingQueue(workqueue.NewMaxOfRateLimiter(
-		workqueue.NewItemExponentialFailureRateLimiter(5*time.Second, 200*time.Second),
+		workqueue.NewItemExponentialFailureRateLimiter(1*time.Second, 30*time.Second),
 		// 20 qps, 100 bucket size.  This is only for retry speed and its only the overall factor (not per item)
 		&workqueue.BucketRateLimiter{Limiter: rate.NewLimiter(rate.Limit(20), 200)},
 	))
@@ -267,7 +267,7 @@ func judgeLabelDeepEqual(old, new map[string]string) bool {
 }
 
 // updateStaticIP responds for reconcile the csip event
-func (m extraManager) updateStaticIP(ipCrd *v2alpha1.CiliumStaticIP) error {
+func (extraManager) updateStaticIP(ipCrd *v2alpha1.CiliumStaticIP) error {
 	node := ipCrd.Spec.NodeName
 	pool := ipCrd.Spec.Pool
 	ip := ipCrd.Spec.IP
@@ -316,18 +316,16 @@ func (m extraManager) updateStaticIP(ipCrd *v2alpha1.CiliumStaticIP) error {
 		}
 	case v2alpha1.WaitingForRelease:
 		if n, ok := k8sManager.nodeManager.nodes[node]; ok {
-			if am, ok := n.resource.Spec.IPAM.CrdPools[pool]; ok {
-				if _, ok := am[ip]; !ok {
-					log.Debugf("ready to delete static ip %s for pod %s on node: %s", ip, podFullName, node)
-					err := n.Ops().ReleaseStaticIP(ip, pool, ipCrd.Spec.PortId)
-					if err != nil {
-						return fmt.Errorf("release static ip: %v for pod %v failed: %s", ip, podFullName, err)
-					}
-					option := staticip.NewUpdateCSIPOption().WithStatus(v2alpha1.Released)
-					err = k8sManager.UpdateStaticIP(podFullName, option)
-					if err != nil {
-						return err
-					}
+			if _, ok := n.pools[Pool(pool)]; ok {
+				log.Debugf("ready to delete static ip %s for pod %s on node: %s", ip, podFullName, node)
+				err := n.Ops().ReleaseStaticIP(ip, pool, ipCrd.Spec.PortId)
+				if err != nil {
+					return fmt.Errorf("release static ip: %v for pod %v failed: %s", ip, podFullName, err)
+				}
+				option := staticip.NewUpdateCSIPOption().WithStatus(v2alpha1.Released)
+				err = k8sManager.UpdateStaticIP(podFullName, option)
+				if err != nil {
+					return err
 				}
 			} else {
 				return fmt.Errorf("pool %s not found on node %s, please check it", pool, node)
@@ -568,12 +566,16 @@ func (extraManager) processNextWorkItem(syncHandler func(key string) error) bool
 	if quit {
 		return false
 	}
-	defer ciliumStaticIPManagerQueue.Done(key)
 
 	log.Infof("process csip %s", key.(string))
-	k8sManager.sem.Acquire(context.TODO(), 1)
-
+	err := k8sManager.sem.Acquire(context.TODO(), 1)
+	if err != nil {
+		defer ciliumStaticIPManagerQueue.Done(key)
+		ciliumStaticIPManagerQueue.AddRateLimited(key)
+		return true
+	}
 	go func(key interface{}) {
+		defer ciliumStaticIPManagerQueue.Done(key)
 		defer k8sManager.sem.Release(1)
 		err := syncHandler(key.(string))
 		if err == nil {
@@ -582,9 +584,6 @@ func (extraManager) processNextWorkItem(syncHandler func(key string) error) bool
 			ciliumStaticIPManagerQueue.Forget(key)
 			return
 		}
-		log.Errorf("err: %s , err: %v", err, err == nil)
-
-		log.WithError(err).Errorf("sync %q failed with %v", key, err)
 		ciliumStaticIPManagerQueue.AddRateLimited(key)
 	}(key)
 

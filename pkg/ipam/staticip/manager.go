@@ -104,17 +104,13 @@ func (m *Manager) ListStaticIPs() []*v2alpha1.CiliumStaticIP {
 func (m *Manager) ListLocalReleasedCSIP() []*v2alpha1.CiliumStaticIP {
 	ipsInt := staticIPStore.List()
 	out := make([]*v2alpha1.CiliumStaticIP, 0, len(ipsInt))
-	j := 0
 	for i := range ipsInt {
 		if ipsInt[i].(*v2alpha1.CiliumStaticIP).Spec.NodeName == nodeTypes.GetName() &&
 			ipsInt[i].(*v2alpha1.CiliumStaticIP).Status.IPStatus == v2alpha1.Released {
 			// filter out csips that belong to localNode and status is Released
-			out[j] = ipsInt[i].(*v2alpha1.CiliumStaticIP)
-			j++
+			out = append(out, ipsInt[i].(*v2alpha1.CiliumStaticIP))
 		}
 	}
-
-	out = out[:j]
 	return out
 }
 
