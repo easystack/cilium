@@ -5,9 +5,9 @@ package metadata
 
 import (
 	"fmt"
-	"math"
 	"strconv"
 	"strings"
+	"time"
 
 	"k8s.io/apimachinery/pkg/util/validation"
 
@@ -26,10 +26,8 @@ var (
 )
 
 const (
-	// defaultCSIPRetainTime represent default retention time of CSIP, the value is infinite.
-	// On a 32-bit system, this is approximately 68 years
-	// On a 64-bit system, this is approximately 2924712086 years
-	defaultCSIPRetainTime = math.MaxInt
+	// defaultCSIPRetainTime represent default retention time of CSIP, the value is 100 year.
+	defaultCSIPRetainTime = int(time.Hour * 24 * 365 * 100 / time.Second)
 )
 
 type ManagerStoppedError struct{}
