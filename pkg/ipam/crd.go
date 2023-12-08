@@ -522,6 +522,7 @@ func (n *nodeStore) updateLocalNodeResource(node *ciliumv2.CiliumNode) {
 			continue
 		}
 	}
+	n.csipMgr.UpdateLocalCiliumNode(node.DeepCopy())
 
 	if releaseUpstreamSyncNeeded {
 		n.refreshTrigger.TriggerWithReason("excess IP release")
@@ -576,13 +577,6 @@ func (n *nodeStore) refreshNode() error {
 			}
 		}
 		a.mutex.RUnlock()
-	}
-
-	csips := n.csipMgr.ListLocalReleasedCSIP()
-	for _, csip := range csips {
-		if _, exist := n.ipsToPool[csip.Spec.IP]; !exist {
-			n.csipMgr.DeleteCSIP(csip.Namespace, csip.Name)
-		}
 	}
 
 	var err error
