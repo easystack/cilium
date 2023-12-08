@@ -243,7 +243,8 @@ func (ipam *IPAM) allocateNextFamily(family Family, owner string, pool Pool, nee
 						err = errors.New("ciliumStaticIP CR is expired, waiting for allocate a new ip address")
 						return
 					default:
-						log.Errorf("unknown status")
+						err = fmt.Errorf("ciliumStaticIP's status is abnormal, is %s,if the exception persists, contact cloud manager",
+							ipCrd.Status.IPStatus)
 						return
 					}
 				}
