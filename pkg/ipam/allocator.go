@@ -238,6 +238,10 @@ func (ipam *IPAM) allocateNextFamily(family Family, owner string, pool Pool, nee
 						log.Errorf("reAllocate static for pod %s failed ,csip's node is %s, but pod's node is %s, status is %s.", owner, ipCrd.Spec.NodeName, nodeTypes.GetName(), v2alpha1.InUse)
 						err = errors.New("csip status is abnormal, if the exception persists, contact cloud manager")
 						return
+					case v2alpha1.Released:
+						ipam.staticIPManager.DeleteCSIP(namespace, name)
+						err = errors.New("ciliumStaticIP CR is expired, waiting for allocate a new ip address")
+						return
 					default:
 						log.Errorf("unknown status")
 						return
