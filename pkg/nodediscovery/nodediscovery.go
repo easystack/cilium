@@ -716,12 +716,14 @@ func (n *NodeDiscovery) mutateNodeResource(nodeResource *ciliumv2.CiliumNode) er
 	case ipamOption.IPAMOpenStack:
 		nodeResource.Spec.OpenStack = openStackTypes.Spec{}
 
-		nodeInfo, err := openStackdMetadata.GetMetadata(context.TODO())
-		if err != nil {
-			log.WithError(err).Fatal("Unable to retrieve InstanceID of own ECS instance")
+		if nodeResource.Spec.InstanceID == "" {
+			nodeInfo, err := openStackdMetadata.GetMetadata(context.TODO())
+			if err != nil {
+				log.WithError(err).Fatal("Unable to retrieve InstanceID from metadata")
+			}
+			nodeResource.Spec.InstanceID = nodeInfo.UUID
+			nodeResource.Spec.OpenStack.AvailabilityZone = nodeInfo.AvailabilityZone
 		}
-		nodeResource.Spec.InstanceID = nodeInfo.UUID
-		nodeResource.Spec.OpenStack.AvailabilityZone = nodeInfo.AvailabilityZone
 
 		if c := n.NetConf; c != nil {
 			if len(c.OpenStack.SecurityGroups) > 0 {
