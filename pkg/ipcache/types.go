@@ -254,6 +254,8 @@ func (s PrefixInfo) logConflicts(scopedLog *logrus.Entry) {
 			}
 		}
 
+		//(fixme) update log level to debug as workaround for
+		//https://review.easystack.cn/c/easystack/captain/+/80248
 		if info.tunnelPeer.IsValid() {
 			if tunnelPeer.IsValid() {
 				scopedLog.WithFields(logrus.Fields{
@@ -261,7 +263,7 @@ func (s PrefixInfo) logConflicts(scopedLog *logrus.Entry) {
 					logfields.Resource:              tunnelPeerResourceID,
 					logfields.ConflictingTunnelPeer: info.tunnelPeer.String(),
 					logfields.ConflictingResource:   resourceID,
-				}).Warning("Detected conflicting tunnel peer for prefix. " +
+				}).Debug("Detected conflicting tunnel peer for prefix. " +
 					"This may cause connectivity issues for this address.")
 			} else {
 				tunnelPeer = info.tunnelPeer
