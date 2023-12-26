@@ -331,7 +331,7 @@ func (n *nodeStore) hasMinimumIPsInPool() (minimumReached bool, required, numAva
 	}
 
 	switch {
-	case n.ownNode.Spec.IPAM.MinAllocate != 0:
+	case n.ownNode.Spec.IPAM.MinAllocate >= 0:
 		required = n.ownNode.Spec.IPAM.MinAllocate
 	case n.ownNode.Spec.IPAM.PreAllocate != 0:
 		required = n.ownNode.Spec.IPAM.PreAllocate
@@ -339,6 +339,11 @@ func (n *nodeStore) hasMinimumIPsInPool() (minimumReached bool, required, numAva
 		required = 2
 	default:
 		required = 1
+	}
+
+	if required == 0 {
+		minimumReached = true
+		return
 	}
 
 	if n.ownNode.Spec.IPAM.Pool != nil {
