@@ -49,7 +49,8 @@ const (
 	defaultGCTime                     = time.Second * 30
 	defaultWaitingForReleaseSafeDelay = time.Second * 30
 
-	DefaultMaxCreatePort     = 1024
+	// DefaultMaxCreatePort = 256-8-20 (8 ips reserved for subnet, 20 reserved for node nics)
+	DefaultMaxCreatePort     = 228
 	DefaultCPIPWatermark     = "1"
 	DefaultPreallocate       = 3
 	DefaultMaxAboveWaterMark = 10
