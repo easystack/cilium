@@ -567,6 +567,7 @@ func (n *NodeManager) SyncMultiPool(ctx context.Context, parallelWorkers int64) 
 		poolSpec[cpip.Name] = &perPoolSpec{
 			spec: map[string]cilium_v2.ItemSpec{},
 		}
+		poolFinalizer[cpip.Name] = make([]string, 0)
 	}
 
 	sem := semaphore.NewWeighted(parallelWorkers)
@@ -708,8 +709,11 @@ func (n *NodeManager) SyncMultiPool(ctx context.Context, parallelWorkers int64) 
 					if _, exist = poolSpec[p.String()]; exist {
 						poolSpec[p.String()].updatePerPoolSpec(node.name, cilium_v2.ItemSpec{
 							Status: "NotReady",
-							Phase:  "Pool removed",
+							Phase:  "Pool removed, please delete the eni manually.",
 						})
+						mutex.Lock()
+						poolFinalizer[p.String()] = append(poolFinalizer[p.String()], node.name)
+						mutex.Unlock()
 					}
 				}
 			}
@@ -725,7 +729,7 @@ func (n *NodeManager) SyncMultiPool(ctx context.Context, parallelWorkers int64) 
 						node.pools[Pool(eni.Pool)] = NewCrdPool(Pool(eni.Pool), node, n.releaseExcessIPs, Recycling)
 						poolSpec[eni.Pool].updatePerPoolSpec(node.name, cilium_v2.ItemSpec{
 							Status: "NotReady",
-							Phase:  "Pool removed",
+							Phase:  "Pool removed, please delete the eni manually.",
 						})
 						mutex.Lock()
 						if _, exist := poolFinalizer[eni.Pool]; exist {
