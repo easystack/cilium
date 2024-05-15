@@ -1254,7 +1254,7 @@ func newDaemon(ctx context.Context, cleaner *daemonCleanup, params *daemonParams
 			log.WithError(err).Error("Unable to Add HostLegacyRouting")
 		}
 		log.Info("Starting rp_filter config watcher!")
-		err = d.startConfigEnsurer()
+		d.startConfigEnsurer()
 	}
 	return &d, restoredEndpoints, nil
 }
