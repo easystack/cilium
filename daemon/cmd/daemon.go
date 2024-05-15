@@ -19,6 +19,7 @@ import (
 
 	"github.com/cilium/cilium/pkg/ipam/staticip"
 	"github.com/cilium/cilium/pkg/sysctl"
+	"k8s.io/apimachinery/pkg/util/wait"
 
 	"github.com/sirupsen/logrus"
 	"github.com/vishvananda/netlink"
@@ -110,6 +111,10 @@ const (
 	ConfigModifyQueueSize = 10
 
 	syncHostIPsController = "sync-host-ips"
+
+	sysctl_all_rp_filter      = "net.ipv4.conf.all.rp_filter"
+	sysctl_nic_rp_filter      = "net.ipv4.conf.%s.rp_filter"
+	rp_filter_revise_interval = 5 * time.Minute
 )
 
 // Daemon is the cilium daemon that is in charge of perform all necessary plumbing,
@@ -1248,6 +1253,8 @@ func newDaemon(ctx context.Context, cleaner *daemonCleanup, params *daemonParams
 		if err := d.AddHostLegacyRoutingRedirectPolicy(option.Config.DirectRoutingDevice); err != nil {
 			log.WithError(err).Error("Unable to Add HostLegacyRouting")
 		}
+		log.Info("Starting rp_filter config watcher!")
+		err = d.startConfigEnsurer()
 	}
 	return &d, restoredEndpoints, nil
 }
@@ -1377,7 +1384,7 @@ func (d *Daemon) AddHostLegacyRoutingRedirectPolicy(intfName string) error {
 	if err := sysctl.Write(variableName, "0"); err != nil {
 		return fmt.Errorf("set sysctl %s=0 failed: %s", variableName, err)
 	}
-	// iptables -t mangle -A PREROUTING -i lxc+ -d <ip local control plan> -j MARK --set-mark 0xF01/0xFFF
+	// iptables -t mangle -A PREROUTING -i lxc+ -d <ip local control plan> -j MARK --set-mark 0xF0C/0xFFF
 	// do not use -I to insert for before the CILIUM_PRE_mangle; fix idempotent operation
 	nodeIPStr := node.GetK8sNodeIP().String()
 	cmdChkStr := fmt.Sprintf("iptables -t mangle -C PREROUTING -i lxc+ -d %s -j MARK --set-mark %#08x/%#08x",
@@ -1403,6 +1410,21 @@ func (d *Daemon) AddHostLegacyRoutingRedirectPolicy(intfName string) error {
 		log.Errorf("===Unable to install init ip rule: %s", err)
 		return err
 	}
+	return nil
+}
+
+func (d *Daemon) startConfigEnsurer() error {
+	quit := make(chan struct{})
+	go wait.Until(func() {
+		variableName := fmt.Sprintf(sysctl_nic_rp_filter, option.Config.DirectRoutingDevice)
+		if err := sysctl.Write(variableName, "0"); err != nil {
+			log.WithError(err).Errorf("set sysctl %s=0 failed.", variableName)
+		}
+
+		if err := sysctl.Write(sysctl_all_rp_filter, "0"); err != nil {
+			log.WithError(err).Errorf("set sysctl %s=0 failed.", sysctl_all_rp_filter)
+		}
+	}, rp_filter_revise_interval, quit)
 	return nil
 }
 
