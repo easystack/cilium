@@ -28,13 +28,16 @@ type managerParams struct {
 
 	NamespaceResource resource.Resource[*slim_core_v1.Namespace]
 	PodResource       k8s.LocalPodResource
+	NodeResource      k8s.LocalNodeResource
 }
 
 func newIPAMMetadataManager(params managerParams) *Manager {
 	if params.DaemonConfig.IPAM == ipamOption.IPAMMultiPool || params.DaemonConfig.IPAM == ipamOption.IPAMOpenStack {
 		manager := &Manager{
-			namespaceResource: params.NamespaceResource,
-			podResource:       params.PodResource,
+			namespaceResource:  params.NamespaceResource,
+			podResource:        params.PodResource,
+			nodeResource:       params.NodeResource,
+			projectLabelGetter: params.DaemonConfig,
 		}
 		params.Lifecycle.Append(manager)
 		return manager

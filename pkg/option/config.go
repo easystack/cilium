@@ -1172,6 +1172,8 @@ const (
 
 	// EnableK8sNetworkPolicy enables support for K8s NetworkPolicy.
 	EnableK8sNetworkPolicy = "enable-k8s-networkpolicy"
+
+	NodeLabelForProject = "node-label-for-project"
 )
 
 // Default string arguments
@@ -2394,6 +2396,8 @@ type DaemonConfig struct {
 
 	// EnableK8sNetworkPolicy enables support for K8s NetworkPolicy.
 	EnableK8sNetworkPolicy bool
+
+	NodeLabelForProject string
 }
 
 var (
@@ -2444,6 +2448,7 @@ var (
 		EnableVTEP:             defaults.EnableVTEP,
 		EnableBGPControlPlane:  defaults.EnableBGPControlPlane,
 		EnableK8sNetworkPolicy: defaults.EnableK8sNetworkPolicy,
+		NodeLabelForProject:    defaults.NodeLabelForProject,
 	}
 )
 
@@ -2704,6 +2709,11 @@ func (c *DaemonConfig) AgentNotReadyNodeTaintValue() string {
 // K8sNetworkPolicyEnabled returns true if cilium agent needs to support K8s NetworkPolicy, false otherwise.
 func (c *DaemonConfig) K8sNetworkPolicyEnabled() bool {
 	return c.EnableK8sNetworkPolicy
+}
+
+func (c *DaemonConfig) GetNodeLabelForProject() string {
+	log.Infof("Acquired node label for project %s", c.NodeLabelForProject)
+	return c.NodeLabelForProject
 }
 
 // K8sIngressControllerEnabled returns true if ingress controller feature is enabled in Cilium
@@ -3491,6 +3501,10 @@ func (c *DaemonConfig) Populate(vp *viper.Viper) {
 
 	// To support K8s NetworkPolicy
 	c.EnableK8sNetworkPolicy = vp.GetBool(EnableK8sNetworkPolicy)
+
+	if len(vp.GetString(NodeLabelForProject)) > 0 {
+		c.NodeLabelForProject = vp.GetString(NodeLabelForProject)
+	}
 }
 
 func (c *DaemonConfig) populateDevices(vp *viper.Viper) {
@@ -3662,7 +3676,7 @@ func (c *DaemonConfig) checkMapSizeLimits() error {
 
 func (c *DaemonConfig) checkIPv4NativeRoutingCIDR() error {
 	if c.GetIPv4NativeRoutingCIDR() == nil && c.EnableIPv4Masquerade && c.Tunnel == TunnelDisabled &&
-		c.IPAMMode() != ipamOption.IPAMENI && c.EnableIPv4 && c.IPAMMode() != ipamOption.IPAMAlibabaCloud && c.IPAMMode() != ipamOption.IPAMOpenStack{
+		c.IPAMMode() != ipamOption.IPAMENI && c.EnableIPv4 && c.IPAMMode() != ipamOption.IPAMAlibabaCloud && c.IPAMMode() != ipamOption.IPAMOpenStack {
 		return fmt.Errorf(
 			"native routing cidr must be configured with option --%s "+
 				"in combination with --%s --%s=%s --%s=%s --%s=true",
