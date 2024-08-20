@@ -4,11 +4,15 @@
 package metadata
 
 import (
+	"context"
 	"fmt"
+	v1 "k8s.io/api/core/v1"
 	"strconv"
 	"strings"
 	"time"
 
+	k8sErrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation"
 
 	"github.com/cilium/cilium/daemon/k8s"
@@ -17,8 +21,10 @@ import (
 	ipamOption "github.com/cilium/cilium/pkg/ipam/option"
 	"github.com/cilium/cilium/pkg/k8s/resource"
 	slim_core_v1 "github.com/cilium/cilium/pkg/k8s/slim/k8s/api/core/v1"
+	"github.com/cilium/cilium/pkg/k8s/utils"
 	"github.com/cilium/cilium/pkg/logging"
 	"github.com/cilium/cilium/pkg/logging/logfields"
+	nodeTypes "github.com/cilium/cilium/pkg/node/types"
 )
 
 var (
@@ -62,10 +68,12 @@ func (r *ResourceNotFound) Is(target error) bool {
 }
 
 type Manager struct {
-	namespaceResource resource.Resource[*slim_core_v1.Namespace]
-	namespaceStore    resource.Store[*slim_core_v1.Namespace]
-	podResource       k8s.LocalPodResource
-	podStore          resource.Store[*slim_core_v1.Pod]
+	namespaceResource  resource.Resource[*slim_core_v1.Namespace]
+	namespaceStore     resource.Store[*slim_core_v1.Namespace]
+	podResource        k8s.LocalPodResource
+	podStore           resource.Store[*slim_core_v1.Pod]
+	nodeResource       k8s.LocalNodeResource
+	projectLabelGetter utils.NodeLabelForProjectConfiguration
 }
 
 func (m *Manager) Start(ctx hive.HookContext) (err error) {
@@ -102,7 +110,31 @@ func splitK8sPodName(owner string) (namespace, name string, ok bool) {
 	return namespace, name, true
 }
 
-func (m *Manager) GetIPPoolForPod(owner string) (pool string, err error) {
+func (m *Manager) GetProjectFromNodeLabel() (string, error) {
+	store, err := m.nodeResource.Store(context.TODO())
+	if err != nil {
+		return "", err
+	}
+	node, exists, err := store.GetByKey(resource.Key{Name: nodeTypes.GetName()})
+	if err != nil {
+		return "", err
+	}
+	if !exists {
+		return "", k8sErrors.NewNotFound(schema.GroupResource{
+			Group:    "core",
+			Resource: "Node",
+		}, nodeTypes.GetName())
+	}
+
+	if project, ok := node.Labels[m.projectLabelGetter.GetNodeLabelForProject()]; ok {
+		return project, nil
+	}
+
+	// project label not found, back to switch default
+	return "", nil
+}
+
+func (m *Manager) GetIPPoolForPod(owner, resourceName string) (pool string, err error) {
 	if m.namespaceStore == nil || m.podStore == nil {
 		return "", &ManagerStoppedError{}
 	}
@@ -123,24 +155,21 @@ func (m *Manager) GetIPPoolForPod(owner string) (pool string, err error) {
 		return "", fmt.Errorf("failed to lookup pod %q: %w", namespace+"/"+name, err)
 	} else if !ok {
 		return "", &ResourceNotFound{Resource: "Pod", Namespace: namespace, Name: name}
-	} else if ipPool, hasAnnotation := pod.Annotations[annotation.IPAMPoolKey]; hasAnnotation {
+	}
+
+	log.Infof("Device_plugin output %v", pod.Spec.Containers[0].Resources)
+
+	if ipPool, hasAnnotation := pod.Annotations[annotation.IPAMPoolKey]; hasAnnotation {
 		return ipPool, nil
 	}
 
-	// Check annotation on namespace
-	podNamespace, ok, err := m.namespaceStore.GetByKey(resource.Key{
-		Name: namespace,
-	})
-	if err != nil {
-		return "", fmt.Errorf("failed to lookup namespace %q: %w", namespace, err)
-	} else if !ok {
-		return "", &ResourceNotFound{Resource: "Namespace", Name: namespace}
-	} else if ipPool, hasAnnotation := podNamespace.Annotations[annotation.IPAMPoolKey]; hasAnnotation {
-		return ipPool, nil
+	if _, ok := pod.Spec.Containers[0].Resources.Requests[v1.ResourceName(resourceName)]; !ok {
+		// device-plugin resource not injected, switch default
+		return ipamOption.PoolDefault, nil
 	}
 
-	// Fallback to default pool
-	return ipamOption.PoolDefault, nil
+	// Fallback to not specified
+	return ipamOption.PoolNotSpecified, nil
 }
 
 func (m *Manager) GetIPPolicyForPod(owner string) (string, int, error) {
@@ -192,4 +221,14 @@ func (m *Manager) GetIPPolicyForPod(owner string) (string, int, error) {
 	}
 
 	return "", 0, nil
+}
+func (m *Manager) GetLocalPods() ([]*slim_core_v1.Pod, error) {
+
+	if m.podStore == nil {
+		return nil, fmt.Errorf("pod store uninitialized")
+	}
+	values := m.podStore.List()
+
+	return values, nil
+
 }

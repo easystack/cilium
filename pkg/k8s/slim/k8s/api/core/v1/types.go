@@ -7,6 +7,7 @@ package v1
 
 import (
 	slim_metav1 "github.com/cilium/cilium/pkg/k8s/slim/k8s/apis/meta/v1"
+	v1 "k8s.io/api/core/v1"
 )
 
 const (
@@ -76,6 +77,11 @@ type Container struct {
 	// container images in workload controllers like Deployments and StatefulSets.
 	// +optional
 	Image string `json:"image,omitempty" protobuf:"bytes,2,opt,name=image"`
+	// Compute Resources required by this container.
+	// Cannot be updated.
+	// More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+	// +optional
+	Resources v1.ResourceRequirements `json:"resources,omitempty" protobuf:"bytes,8,opt,name=resources"`
 	// List of ports to expose from the container. Not specifying a port here
 	// DOES NOT prevent that port from being exposed. Any port which is
 	// listening on the default "0.0.0.0" address inside a container will be

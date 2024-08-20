@@ -545,6 +545,8 @@ const (
 
 	// EnableK8sNetworkPolicy enables support for K8s NetworkPolicy.
 	EnableK8sNetworkPolicy = true
+
+	NodeLabelForProject = "node-role.kubernetes.io/project"
 )
 
 var (

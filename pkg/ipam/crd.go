@@ -7,39 +7,41 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	ipamMetadata "github.com/cilium/cilium/pkg/ipam/metadata"
+	v12 "k8s.io/api/core/v1"
 	"net"
 	"reflect"
 	"strconv"
 	"sync"
 	"time"
 
-	"github.com/cilium/cilium/pkg/ipam/staticip"
-	"github.com/cilium/cilium/pkg/k8s/apis/cilium.io/v2alpha1"
-	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
-
-	"github.com/sirupsen/logrus"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/fields"
-	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/client-go/tools/cache"
-
-	openStack "github.com/cilium/cilium/pkg/openstack/utils"
 
 	alibabaCloud "github.com/cilium/cilium/pkg/alibabacloud/utils"
 	"github.com/cilium/cilium/pkg/cidr"
+	"github.com/cilium/cilium/pkg/deviceplugin"
 	"github.com/cilium/cilium/pkg/ip"
 	ipamOption "github.com/cilium/cilium/pkg/ipam/option"
+	"github.com/cilium/cilium/pkg/ipam/staticip"
 	ipamTypes "github.com/cilium/cilium/pkg/ipam/types"
 	ciliumv2 "github.com/cilium/cilium/pkg/k8s/apis/cilium.io/v2"
+	"github.com/cilium/cilium/pkg/k8s/apis/cilium.io/v2alpha1"
 	"github.com/cilium/cilium/pkg/k8s/client"
 	"github.com/cilium/cilium/pkg/k8s/informer"
 	"github.com/cilium/cilium/pkg/k8s/utils"
 	"github.com/cilium/cilium/pkg/lock"
 	"github.com/cilium/cilium/pkg/logging/logfields"
 	nodeTypes "github.com/cilium/cilium/pkg/node/types"
+	openStack "github.com/cilium/cilium/pkg/openstack/utils"
 	"github.com/cilium/cilium/pkg/option"
 	"github.com/cilium/cilium/pkg/trigger"
+	"github.com/sirupsen/logrus"
+	"github.com/vishvananda/netlink"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/fields"
+	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/tools/cache"
 )
 
 var (
@@ -86,11 +88,18 @@ type nodeStore struct {
 	ipsToPool map[string]string
 
 	csipMgr *staticip.Manager
+
+	devicePluginManager           *deviceplugin.ENIIPDevicePlugin
+	devicePluginResource          *deviceplugin.Resource
+	projectName                   string
+	projectLabelGetter            utils.NodeLabelForProjectConfiguration
+	metadata                      *ipamMetadata.Manager
+	devicePluginServerInitialized bool
 }
 
 // newNodeStore initializes a new store which reflects the CiliumNode custom
 // resource of the specified node name
-func newNodeStore(nodeName string, conf Configuration, owner Owner, clientset client.Clientset, k8sEventReg K8sEventRegister, mtuConfig MtuConfiguration, csipMgr *staticip.Manager) *nodeStore {
+func newNodeStore(nodeName string, conf Configuration, owner Owner, clientset client.Clientset, k8sEventReg K8sEventRegister, mtuConfig MtuConfiguration, csipMgr *staticip.Manager, metadata *ipamMetadata.Manager, projectLabelGetter utils.NodeLabelForProjectConfiguration) *nodeStore {
 	log.WithField(fieldName, nodeName).Info("Subscribed to CiliumNode custom resource")
 
 	store := &nodeStore{
@@ -100,6 +109,8 @@ func newNodeStore(nodeName string, conf Configuration, owner Owner, clientset cl
 		mtuConfig:          mtuConfig,
 		clientset:          clientset,
 		ipsToPool:          map[string]string{},
+		metadata:           metadata,
+		projectLabelGetter: projectLabelGetter,
 	}
 
 	if csipMgr != nil {
@@ -118,9 +129,61 @@ func newNodeStore(nodeName string, conf Configuration, owner Owner, clientset cl
 	}
 	store.refreshTrigger = t
 
+	store.devicePluginResource = &deviceplugin.Resource{
+		UpdateSignal: make(chan struct{}),
+		Count:        0,
+	}
+
+	store.devicePluginManager = deviceplugin.NewENIIPDevicePlugin(store.devicePluginResource, context.TODO(), func() int {
+
+		nonDevicePluginCount, err := store.getNonDevicePluginPodCount()
+		if err != nil {
+			log.Errorf("Failed to get non device plugin pod count: %s", err)
+			store.devicePluginResource.HasErr = true
+			return 0
+		}
+
+		store.devicePluginResource.HasErr = false
+		reportCount := store.acquireResourceCount() - nonDevicePluginCount
+
+		if reportCount < store.devicePluginResource.MustReportCount {
+			log.Warningf("MustReportCount bigger than reportCount, what is abnormal.")
+			return store.devicePluginResource.MustReportCount
+		}
+		return reportCount
+	})
+
 	// Create the CiliumNode custom resource. This call will block until
 	// the custom resource has been created
 	owner.UpdateCiliumNodeResource()
+	go func() {
+
+		tick := time.NewTicker(time.Second * 30)
+		for {
+			select {
+			case <-tick.C:
+				node, err := clientset.GetK8sNode(context.TODO(), nodeTypes.GetName())
+				if err != nil {
+					log.Infof("Failed to get local k8s node, error: %s", err)
+				} else {
+					if p, ok := node.Labels[store.projectLabelGetter.GetNodeLabelForProject()]; ok && p != "" {
+						store.projectName = p
+						goto serveDevicePlugin
+					}
+				}
+
+			}
+		}
+	serveDevicePlugin:
+		tick.Stop()
+		err := store.devicePluginManager.Serve(store.projectName)
+		if err != nil {
+			log.Fatalf("Failed to serve device plugin server, error: %s", err)
+		}
+		store.devicePluginServerInitialized = true
+		log.Infof("Device plugin server initialized.")
+	}()
+
 	apiGroup := "cilium/v2::CiliumNode"
 	ciliumNodeSelector := fields.ParseSelectorOrDie("metadata.name=" + nodeName)
 	_, ciliumNodeInformer := informer.NewInformer(
@@ -433,10 +496,15 @@ func (n *nodeStore) updateLocalNodeResource(node *ciliumv2.CiliumNode) {
 		}
 	}
 
+	availableCount := 0
+
 	m := make(map[string]string)
-	for p, allocationMap := range node.Spec.IPAM.CrdPools {
-		for ip, _ := range allocationMap {
+	for p := range node.Spec.IPAM.CrdPools {
+		for ip := range node.Spec.IPAM.CrdPools[p] {
 			m[ip] = p
+			if p != "default" {
+				availableCount++
+			}
 		}
 	}
 	n.ipsToPool = m
@@ -447,6 +515,16 @@ func (n *nodeStore) updateLocalNodeResource(node *ciliumv2.CiliumNode) {
 		if n.ownNode.Spec.IPAM.CrdPools == nil {
 			continue
 		}
+
+		// ignore default pool
+		if n.ipsToPool[ip] != "default" {
+			if status == ipamOption.IPAMReleased ||
+				status == ipamOption.IPAMMarkForRelease ||
+				status == ipamOption.IPAMReadyForRelease {
+				availableCount--
+			}
+		}
+
 		// Ignore states that agent previously responded to.
 		if status == ipamOption.IPAMReadyForRelease || status == ipamOption.IPAMDoNotRelease {
 			continue
@@ -529,6 +607,14 @@ func (n *nodeStore) updateLocalNodeResource(node *ciliumv2.CiliumNode) {
 	}
 	n.csipMgr.UpdateLocalCiliumNode(node.DeepCopy())
 
+	if availableCount != n.devicePluginResource.Count {
+		n.devicePluginResource.Count = availableCount
+		if n.devicePluginServerInitialized {
+			n.devicePluginResource.UpdateSignal <- struct{}{}
+		}
+		log.Infof("Updated eni-ip count: %d", n.devicePluginResource.Count)
+	}
+
 	if releaseUpstreamSyncNeeded {
 		n.refreshTrigger.TriggerWithReason("excess IP release")
 	}
@@ -595,6 +681,10 @@ func (n *nodeStore) addAllocator(allocator *crdAllocator) {
 	n.mutex.Lock()
 	n.allocators = append(n.allocators, allocator)
 	n.mutex.Unlock()
+}
+
+func (n *nodeStore) acquireResourceCount() int {
+	return n.devicePluginResource.Count
 }
 
 // allocate checks if a particular IP can be allocated or return an error
@@ -665,6 +755,39 @@ func (n *nodeStore) allocateNext(poolAllocated map[string]ipamTypes.AllocationMa
 	if n.ownNode == nil {
 		return nil, nil, fmt.Errorf("CiliumNode for own node is not available")
 	}
+
+	if pool == PoolNotSpecified {
+		maxFreeCount := 0
+		var targetPool string
+
+		for s := range n.ownNode.Spec.IPAM.CrdPools {
+			if s == "default" {
+				continue
+			}
+			availableCount := len(n.ownNode.Spec.IPAM.CrdPools[s])
+			usedCount := 0
+
+			for p := range n.ownNode.Spec.IPAM.CrdPools[s] {
+				if n.isIPInReleaseHandshake(p) {
+					availableCount--
+				}
+			}
+
+			if used, ok := n.ownNode.Status.IPAM.PoolUsed[s]; ok {
+				usedCount = len(used)
+			}
+			if availableCount-usedCount > maxFreeCount {
+				targetPool = s
+				maxFreeCount = availableCount - usedCount
+			}
+		}
+		if targetPool != "" {
+			pool = Pool(targetPool)
+		} else {
+			return nil, nil, fmt.Errorf("no target pool available")
+		}
+	}
+
 	var allocate ipamTypes.AllocationMap
 	allocated := poolAllocated[pool.String()]
 
@@ -766,9 +889,9 @@ type crdAllocator struct {
 }
 
 // newCRDAllocator creates a new CRD-backed IP allocator
-func newCRDAllocator(family Family, c Configuration, owner Owner, clientset client.Clientset, k8sEventReg K8sEventRegister, mtuConfig MtuConfiguration, csipMgr *staticip.Manager) Allocator {
+func newCRDAllocator(family Family, c Configuration, owner Owner, clientset client.Clientset, k8sEventReg K8sEventRegister, mtuConfig MtuConfiguration, csipMgr *staticip.Manager, metadata *ipamMetadata.Manager, projectLabelGetter utils.NodeLabelForProjectConfiguration) Allocator {
 	initNodeStore.Do(func() {
-		sharedNodeStore = newNodeStore(nodeTypes.GetName(), c, owner, clientset, k8sEventReg, mtuConfig, csipMgr)
+		sharedNodeStore = newNodeStore(nodeTypes.GetName(), c, owner, clientset, k8sEventReg, mtuConfig, csipMgr, metadata, projectLabelGetter)
 	})
 
 	allocator := &crdAllocator{
@@ -1097,4 +1220,54 @@ func (e *ErrIPNotAvailableInPool) Is(target error) bool {
 		return false
 	}
 	return t.ip.Equal(e.ip)
+}
+
+func (n *nodeStore) getNonDevicePluginPodCount() (int, error) {
+	count := 0
+	mustRegisterCount := 0
+	values, err := n.metadata.GetLocalPods()
+	if err != nil {
+		pods, err := n.clientset.Slim().CoreV1().Pods(v12.NamespaceAll).List(context.TODO(), metav1.ListOptions{
+			FieldSelector:   fields.OneTermEqualSelector("spec.nodeName", nodeTypes.GetName()).String(),
+			ResourceVersion: "0"})
+
+		if err != nil {
+			return 0, fmt.Errorf("unable to get local pods: %s", err)
+		}
+
+		for i := range pods.Items {
+			values = append(values, &pods.Items[i])
+		}
+	}
+
+	for i := range values {
+		if !values[i].Spec.HostNetwork {
+			if _, exist := values[i].Spec.Containers[0].Resources.Requests[v12.ResourceName(n.projectName)]; exist {
+				mustRegisterCount++
+			}
+		}
+	}
+
+	n.devicePluginResource.MustReportCount = mustRegisterCount
+
+	defaultPool, err := n.clientset.CiliumV2alpha1().CiliumPodIPPools().Get(context.TODO(), "default", metav1.GetOptions{ResourceVersion: "0"})
+	if err != nil {
+		return 0, fmt.Errorf("unable to get default ciliumPodNetwork: %s", err)
+	}
+
+	_, ipNet, err := net.ParseCIDR(defaultPool.Spec.CIDR)
+	if err != nil {
+		return 0, fmt.Errorf("unable to get default pool's cidr: %s", err)
+	}
+
+	for i := range values {
+		if !values[i].Spec.HostNetwork {
+			if _, exist := values[i].Spec.Containers[0].Resources.Requests[v12.ResourceName(n.projectName)]; !exist &&
+				len(values[i].Status.PodIPs) > 0 &&
+				ipNet.Contains(net.ParseIP(values[i].Status.PodIP)) {
+				count++
+			}
+		}
+	}
+	return count, nil
 }

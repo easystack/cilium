@@ -7,20 +7,21 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/cilium/cilium/pkg/ipam/staticip"
-	"github.com/cilium/cilium/pkg/k8s/apis/cilium.io/v2alpha1"
-	nodeTypes "github.com/cilium/cilium/pkg/node/types"
-	k8sErr "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/validation"
 	"net"
 	"strings"
 	"time"
 
+	"github.com/cilium/cilium/pkg/deviceplugin"
+	"github.com/cilium/cilium/pkg/ipam/staticip"
+	"github.com/cilium/cilium/pkg/k8s/apis/cilium.io/v2alpha1"
+	"github.com/cilium/cilium/pkg/metrics"
+	nodeTypes "github.com/cilium/cilium/pkg/node/types"
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 
-	"github.com/cilium/cilium/pkg/metrics"
+	k8sErr "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/validation"
 )
 
 const (
@@ -39,10 +40,15 @@ var (
 
 func (ipam *IPAM) determineIPAMPool(owner string) (Pool, error) {
 	if ipam.metadata == nil {
-		return PoolDefault, nil
+		return PoolNotSpecified, nil
 	}
 
-	pool, err := ipam.metadata.GetIPPoolForPod(owner)
+	project, err := ipam.metadata.GetProjectFromNodeLabel()
+	if err != nil {
+		return "", err
+	}
+
+	pool, err := ipam.metadata.GetIPPoolForPod(owner, deviceplugin.ENIIPResourcePrefix+project)
 	if err != nil {
 		return "", fmt.Errorf("unable to determine IPAM pool for owner %q: %w", owner, err)
 	}

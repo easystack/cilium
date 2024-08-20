@@ -4,17 +4,19 @@
 package ipam
 
 import (
-	"github.com/cilium/cilium/pkg/ipam/staticip"
-	"github.com/sirupsen/logrus"
 	"net"
 
 	"github.com/cilium/cilium/pkg/cidr"
 	"github.com/cilium/cilium/pkg/datapath/types"
+	ipamMetadata "github.com/cilium/cilium/pkg/ipam/metadata"
 	ipamOption "github.com/cilium/cilium/pkg/ipam/option"
+	"github.com/cilium/cilium/pkg/ipam/staticip"
 	"github.com/cilium/cilium/pkg/k8s/client"
+	"github.com/cilium/cilium/pkg/k8s/utils"
 	"github.com/cilium/cilium/pkg/k8s/watchers/subscriber"
 	"github.com/cilium/cilium/pkg/logging"
 	"github.com/cilium/cilium/pkg/logging/logfields"
+	"github.com/sirupsen/logrus"
 )
 
 var (
@@ -103,18 +105,20 @@ type MtuConfiguration interface {
 }
 
 type Metadata interface {
-	GetIPPoolForPod(owner string) (pool string, err error)
+	GetIPPoolForPod(owner string, resourceName string) (pool string, err error)
 	GetIPPolicyForPod(owner string) (string, int, error)
+	GetProjectFromNodeLabel() (string, error)
 }
 
 // NewIPAM returns a new IP address manager
-func NewIPAM(nodeAddressing types.NodeAddressing, c Configuration, owner Owner, k8sEventReg K8sEventRegister, mtuConfig MtuConfiguration, clientset client.Clientset, csipMgr *staticip.Manager) *IPAM {
+func NewIPAM(nodeAddressing types.NodeAddressing, c Configuration, owner Owner, k8sEventReg K8sEventRegister, mtuConfig MtuConfiguration, clientset client.Clientset, csipMgr *staticip.Manager, metadata *ipamMetadata.Manager, projectLabelGetter utils.NodeLabelForProjectConfiguration) *IPAM {
 	ipam := &IPAM{
 		nodeAddressing:   nodeAddressing,
 		config:           c,
 		owner:            map[Pool]map[string]string{},
 		expirationTimers: map[string]string{},
 		excludedIPs:      map[string]string{},
+		metadata:         metadata,
 	}
 
 	switch c.IPAMMode() {
@@ -155,11 +159,11 @@ func NewIPAM(nodeAddressing types.NodeAddressing, c Configuration, owner Owner, 
 	case ipamOption.IPAMCRD, ipamOption.IPAMENI, ipamOption.IPAMAzure, ipamOption.IPAMAlibabaCloud, ipamOption.IPAMOpenStack:
 		log.Info("Initializing CRD-based IPAM")
 		if c.IPv6Enabled() {
-			ipam.IPv6Allocator = newCRDAllocator(IPv6, c, owner, clientset, k8sEventReg, mtuConfig, csipMgr)
+			ipam.IPv6Allocator = newCRDAllocator(IPv6, c, owner, clientset, k8sEventReg, mtuConfig, csipMgr, metadata, projectLabelGetter)
 		}
 
 		if c.IPv4Enabled() {
-			ipam.IPv4Allocator = newCRDAllocator(IPv4, c, owner, clientset, k8sEventReg, mtuConfig, csipMgr)
+			ipam.IPv4Allocator = newCRDAllocator(IPv4, c, owner, clientset, k8sEventReg, mtuConfig, csipMgr, metadata, projectLabelGetter)
 		}
 	case ipamOption.IPAMDelegatedPlugin:
 		log.Info("Initializing no-op IPAM since we're using a CNI delegated plugin")

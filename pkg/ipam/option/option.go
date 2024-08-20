@@ -55,3 +55,4 @@ const ENIPDBlockSizeIPv4 = 16
 
 // PoolDefault is the default IP pool from which to allocate.
 const PoolDefault = "default"
+const PoolNotSpecified = "not specified"

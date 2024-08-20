@@ -167,5 +167,6 @@ func (p Pool) VPCId() string {
 }
 
 const (
-	PoolDefault Pool = ipamOption.PoolDefault
+	PoolDefault      Pool = ipamOption.PoolDefault
+	PoolNotSpecified Pool = ipamOption.PoolNotSpecified
 )
