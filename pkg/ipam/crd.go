@@ -1246,7 +1246,7 @@ func (n *nodeStore) getNonDevicePluginPodCount() (int, error) {
 
 	for i := range values {
 		if !values[i].Spec.HostNetwork {
-			if _, exist := values[i].Spec.Containers[0].Resources.Requests[v12.ResourceName(n.projectName)]; !exist &&
+			if _, exist := values[i].Spec.Containers[0].Resources.Requests[v12.ResourceName(deviceplugin.ENIIPResourcePrefix+n.projectName)]; !exist &&
 				len(values[i].Status.PodIPs) > 0 &&
 				// 非default pool 且没有注入device-plugin资源
 				!ipNet.Contains(net.ParseIP(values[i].Status.PodIP)) {
