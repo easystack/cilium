@@ -29,10 +29,8 @@ var (
 var KubeletSocket = pluginapi.DevicePluginPath + "kubelet.sock"
 
 type Resource struct {
-	UpdateSignal    chan struct{}
-	Count           int
-	MustReportCount int
-	HasErr          bool
+	UpdateSignal chan struct{}
+	Count        int
 }
 
 type ENIIPDevicePlugin struct {
@@ -232,9 +230,6 @@ func (p *ENIIPDevicePlugin) ListAndWatch(_ *pluginapi.Empty, stream pluginapi.De
 		select {
 		case <-ticker.C:
 			count = p.listFunc()
-			if p.res.HasErr {
-				count = p.res.MustReportCount
-			}
 			log.Infof("Device-plugin listFunc called, count: %d", count)
 			err := sendResponse(count, stream)
 			if err != nil {
@@ -243,9 +238,7 @@ func (p *ENIIPDevicePlugin) ListAndWatch(_ *pluginapi.Empty, stream pluginapi.De
 		// Send	new list when resource count changed
 		case <-p.res.UpdateSignal:
 			count = p.listFunc()
-			if p.res.HasErr {
-				count = p.res.MustReportCount
-			}
+
 			log.Infof("Device-plugin updateSignal activated, count: %d", count)
 			err := sendResponse(count, stream)
 			if err != nil {

@@ -137,19 +137,14 @@ func newNodeStore(nodeName string, conf Configuration, owner Owner, clientset cl
 	store.devicePluginManager = deviceplugin.NewENIIPDevicePlugin(store.devicePluginResource, context.TODO(), func() int {
 
 		nonDevicePluginCount, err := store.getNonDevicePluginPodCount()
+		log.Infof("nonDevicePluginCount: %d", nonDevicePluginCount)
 		if err != nil {
 			log.Errorf("Failed to get non device plugin pod count: %s", err)
-			store.devicePluginResource.HasErr = true
 			return 0
 		}
 
-		store.devicePluginResource.HasErr = false
 		reportCount := store.acquireResourceCount() - nonDevicePluginCount
 
-		if reportCount < store.devicePluginResource.MustReportCount {
-			log.Warningf("MustReportCount bigger than reportCount, what is abnormal.")
-			return store.devicePluginResource.MustReportCount
-		}
 		return reportCount
 	})
 
@@ -1224,7 +1219,6 @@ func (e *ErrIPNotAvailableInPool) Is(target error) bool {
 
 func (n *nodeStore) getNonDevicePluginPodCount() (int, error) {
 	count := 0
-	mustRegisterCount := 0
 	values, err := n.metadata.GetLocalPods()
 	if err != nil {
 		pods, err := n.clientset.Slim().CoreV1().Pods(v12.NamespaceAll).List(context.TODO(), metav1.ListOptions{
@@ -1240,16 +1234,6 @@ func (n *nodeStore) getNonDevicePluginPodCount() (int, error) {
 		}
 	}
 
-	for i := range values {
-		if !values[i].Spec.HostNetwork {
-			if _, exist := values[i].Spec.Containers[0].Resources.Requests[v12.ResourceName(n.projectName)]; exist {
-				mustRegisterCount++
-			}
-		}
-	}
-
-	n.devicePluginResource.MustReportCount = mustRegisterCount
-
 	defaultPool, err := n.clientset.CiliumV2alpha1().CiliumPodIPPools().Get(context.TODO(), "default", metav1.GetOptions{ResourceVersion: "0"})
 	if err != nil {
 		return 0, fmt.Errorf("unable to get default ciliumPodNetwork: %s", err)
@@ -1264,7 +1248,8 @@ func (n *nodeStore) getNonDevicePluginPodCount() (int, error) {
 		if !values[i].Spec.HostNetwork {
 			if _, exist := values[i].Spec.Containers[0].Resources.Requests[v12.ResourceName(n.projectName)]; !exist &&
 				len(values[i].Status.PodIPs) > 0 &&
-				ipNet.Contains(net.ParseIP(values[i].Status.PodIP)) {
+				// 非default pool 且没有注入device-plugin资源
+				!ipNet.Contains(net.ParseIP(values[i].Status.PodIP)) {
 				count++
 			}
 		}
