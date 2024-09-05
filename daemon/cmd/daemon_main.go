@@ -1109,6 +1109,9 @@ func initializeFlags() {
 	flags.MarkHidden(option.EnableK8sNetworkPolicy)
 	option.BindEnv(Vp, option.EnableK8sNetworkPolicy)
 
+	flags.String(option.NodeLabelForProject, defaults.NodeLabelForProject, "Label key to get the project to which nodes belong.")
+	option.BindEnv(Vp, option.NodeLabelForProject)
+
 	if err := Vp.BindPFlags(flags); err != nil {
 		log.Fatalf("BindPFlags failed: %s", err)
 	}
