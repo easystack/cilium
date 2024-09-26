@@ -47,6 +47,7 @@ import (
 var (
 	sharedNodeStore *nodeStore
 	initNodeStore   sync.Once
+	startDpServer   sync.Once
 )
 
 const (
@@ -91,10 +92,11 @@ type nodeStore struct {
 
 	devicePluginManager           *deviceplugin.ENIIPDevicePlugin
 	devicePluginResource          *deviceplugin.Resource
-	projectName                   string
 	projectLabelGetter            utils.NodeLabelForProjectConfiguration
 	metadata                      *ipamMetadata.Manager
 	devicePluginServerInitialized bool
+
+	projectLabelCh chan string
 }
 
 // newNodeStore initializes a new store which reflects the CiliumNode custom
@@ -111,6 +113,7 @@ func newNodeStore(nodeName string, conf Configuration, owner Owner, clientset cl
 		ipsToPool:          map[string]string{},
 		metadata:           metadata,
 		projectLabelGetter: projectLabelGetter,
+		projectLabelCh:     make(chan string),
 	}
 
 	if csipMgr != nil {
@@ -134,9 +137,9 @@ func newNodeStore(nodeName string, conf Configuration, owner Owner, clientset cl
 		Count:        0,
 	}
 
-	store.devicePluginManager = deviceplugin.NewENIIPDevicePlugin(store.devicePluginResource, context.TODO(), func() int {
+	store.devicePluginManager = deviceplugin.NewENIIPDevicePlugin(store.devicePluginResource, context.TODO(), func(project string) int {
 
-		nonDevicePluginCount, err := store.getNonDevicePluginPodCount()
+		nonDevicePluginCount, err := store.getNonDevicePluginPodCount(project)
 		log.Infof("nonDevicePluginCount: %d", nonDevicePluginCount)
 		if err != nil {
 			log.Errorf("Failed to get non device plugin pod count: %s", err)
@@ -146,37 +149,33 @@ func newNodeStore(nodeName string, conf Configuration, owner Owner, clientset cl
 		reportCount := store.acquireResourceCount() - nonDevicePluginCount
 
 		return reportCount
-	})
+	}, store.projectLabelCh)
 
 	// Create the CiliumNode custom resource. This call will block until
 	// the custom resource has been created
 	owner.UpdateCiliumNodeResource()
 	go func() {
 
-		tick := time.NewTicker(time.Second * 30)
+		tick := time.Tick(time.Second * 30)
+		var projectName string
 		for {
 			select {
-			case <-tick.C:
-				node, err := clientset.GetK8sNode(context.TODO(), nodeTypes.GetName())
-				if err != nil {
-					log.Infof("Failed to get local k8s node, error: %s", err)
-				} else {
-					if p, ok := node.Labels[store.projectLabelGetter.GetNodeLabelForProject()]; ok && p != "" {
-						store.projectName = p
-						goto serveDevicePlugin
+			case <-tick:
+				if store.ownNode != nil {
+					if p, ok := store.ownNode.Labels[store.projectLabelGetter.GetNodeLabelForProject()]; ok && p != "" && p != projectName {
+						projectName = p
+						startDpServer.Do(func() {
+							err := store.devicePluginManager.Serve(projectName)
+							if err != nil {
+								log.Fatalf("Failed to serve device plugin server, error: %s", err)
+							}
+							log.Infof("Device plugin server initialized.")
+						})
+						store.projectLabelCh <- projectName
 					}
 				}
-
 			}
 		}
-	serveDevicePlugin:
-		tick.Stop()
-		err := store.devicePluginManager.Serve(store.projectName)
-		if err != nil {
-			log.Fatalf("Failed to serve device plugin server, error: %s", err)
-		}
-		store.devicePluginServerInitialized = true
-		log.Infof("Device plugin server initialized.")
 	}()
 
 	apiGroup := "cilium/v2::CiliumNode"
@@ -1217,7 +1216,7 @@ func (e *ErrIPNotAvailableInPool) Is(target error) bool {
 	return t.ip.Equal(e.ip)
 }
 
-func (n *nodeStore) getNonDevicePluginPodCount() (int, error) {
+func (n *nodeStore) getNonDevicePluginPodCount(project string) (int, error) {
 	count := 0
 	values, err := n.metadata.GetLocalPods()
 	if err != nil {
@@ -1246,7 +1245,7 @@ func (n *nodeStore) getNonDevicePluginPodCount() (int, error) {
 
 	for i := range values {
 		if !values[i].Spec.HostNetwork {
-			if _, exist := values[i].Spec.Containers[0].Resources.Requests[v12.ResourceName(deviceplugin.ENIIPResourcePrefix+n.projectName)]; !exist &&
+			if _, exist := values[i].Spec.Containers[0].Resources.Requests[v12.ResourceName(deviceplugin.ENIIPResourcePrefix+project)]; !exist &&
 				len(values[i].Status.PodIPs) > 0 &&
 				// 非default pool 且没有注入device-plugin资源
 				!ipNet.Contains(net.ParseIP(values[i].Status.PodIP)) {

@@ -34,32 +34,34 @@ type Resource struct {
 }
 
 type ENIIPDevicePlugin struct {
-	name     string
-	endPoint string
-	server   *grpc.Server
-	res      *Resource
-	ctx      context.Context
-	listFunc func() int
-	cancel   context.CancelFunc
+	endPoint        string
+	project         string
+	server          *grpc.Server
+	res             *Resource
+	ctx             context.Context
+	projectChangeFn <-chan string
+	listFunc        func(string) int
+	cancel          context.CancelFunc
 }
 
 // NewENIIPDevicePlugin creates a new ENIDevicePlugin.
-func NewENIIPDevicePlugin(res *Resource, ctx context.Context, list func() int) *ENIIPDevicePlugin {
+func NewENIIPDevicePlugin(res *Resource, ctx context.Context, list func(project string) int, projectLabelFn <-chan string) *ENIIPDevicePlugin {
 	c, cancelFunc := context.WithCancel(ctx)
 
 	return &ENIIPDevicePlugin{
-		res:      res,
-		listFunc: list,
-		cancel:   cancelFunc,
-		ctx:      c,
+		res:             res,
+		listFunc:        list,
+		cancel:          cancelFunc,
+		ctx:             c,
+		projectChangeFn: projectLabelFn,
 	}
 }
 
 func (p *ENIIPDevicePlugin) Serve(project string) error {
-	p.name = ENIIPResourcePrefix + project
+	p.project = project
 	p.endPoint = path.Join(pluginapi.DevicePluginPath, fmt.Sprintf("eni-ip-%s.sock", project))
 	err := p.start()
-	log.Infof("Start device plugin for %v", p.name)
+	log.Infof("Start device plugin for %v", p.project)
 
 	if err != nil {
 		log.Errorf("Device plugin start failed: %v", err)
@@ -118,6 +120,27 @@ func (p *ENIIPDevicePlugin) Serve(project string) error {
 				}
 			case <-p.ctx.Done():
 				break
+			case newProject := <-p.projectChangeFn:
+				log.Infoln("Node label for project changed, restart device-plugin server...")
+				if p.server != nil {
+					p.server.Stop()
+				}
+
+				if p.cancel != nil {
+					p.cancel()
+				}
+
+				_ = os.Remove(p.endPoint)
+				p.project = newProject
+				p.endPoint = path.Join(pluginapi.DevicePluginPath, fmt.Sprintf("eni-ip-%s.sock", newProject))
+				p.ctx, p.cancel = context.WithCancel(context.Background())
+				_ = p.start()
+				err = p.register()
+
+				if err != nil {
+					log.Errorf("Register failed after node label changed, %s", err)
+				}
+
 			}
 		}
 	}()
@@ -181,7 +204,7 @@ func (p *ENIIPDevicePlugin) register() error {
 	_, err = client.Register(p.ctx, &pluginapi.RegisterRequest{
 		Version:      pluginapi.Version,
 		Endpoint:     path.Base(p.endPoint),
-		ResourceName: p.name,
+		ResourceName: ENIIPResourcePrefix + p.project,
 	})
 
 	if err != nil {
@@ -198,13 +221,13 @@ func (p *ENIIPDevicePlugin) GetDevicePluginOptions(_ context.Context, _ *plugina
 
 // ListAndWatch returns ENI devices list.
 func (p *ENIIPDevicePlugin) ListAndWatch(_ *pluginapi.Empty, stream pluginapi.DevicePlugin_ListAndWatchServer) error {
-	count := p.listFunc()
+	count := p.listFunc(p.project)
 
 	sendResponse := func(count int, s pluginapi.DevicePlugin_ListAndWatchServer) error {
 		enis := make([]*pluginapi.Device, count)
 		for i := 0; i < count; i++ {
 			enis[i] = &pluginapi.Device{
-				ID:     fmt.Sprintf("%v-%d", p.name, i),
+				ID:     fmt.Sprintf("%v-%d", ENIIPResourcePrefix+p.project, i),
 				Health: pluginapi.Healthy,
 			}
 		}
@@ -213,7 +236,7 @@ func (p *ENIIPDevicePlugin) ListAndWatch(_ *pluginapi.Empty, stream pluginapi.De
 			Devices: enis,
 		}
 		err := stream.Send(resp)
-		log.Infof("Report resources: %v of %v", p.name, count)
+		log.Infof("Report resources: %v of %v", p.project, count)
 		if err != nil {
 			log.Errorf("Send devices error: %v", err)
 			return err
@@ -229,7 +252,7 @@ func (p *ENIIPDevicePlugin) ListAndWatch(_ *pluginapi.Empty, stream pluginapi.De
 	for {
 		select {
 		case <-ticker.C:
-			count = p.listFunc()
+			count = p.listFunc(p.project)
 			log.Infof("Device-plugin listFunc called, count: %d", count)
 			err := sendResponse(count, stream)
 			if err != nil {
@@ -237,7 +260,7 @@ func (p *ENIIPDevicePlugin) ListAndWatch(_ *pluginapi.Empty, stream pluginapi.De
 			}
 		// Send	new list when resource count changed
 		case <-p.res.UpdateSignal:
-			count = p.listFunc()
+			count = p.listFunc(p.project)
 
 			log.Infof("Device-plugin updateSignal activated, count: %d", count)
 			err := sendResponse(count, stream)
