@@ -100,9 +100,9 @@ func (n *Node) CreateInterface(ctx context.Context, allocation *ipam.AllocationA
 	}
 
 	n.mutex.RLock()
-	if len(n.poolsEnis[pool]) > 0 {
-		return 0, errUnableToCreateENI, errors.New("no more pool eni slot")
-	}
+	//if len(n.poolsEnis[pool]) > 0 {
+	//	return 0, errUnableToCreateENI, errors.New("no more pool eni slot")
+	//}
 	resource := *n.k8sObj
 	n.mutex.RUnlock()
 
