@@ -387,9 +387,12 @@ func (extraManager) CreateDefaultPool(subnets ipamTypes.SubnetMap) {
 					Name: string(PoolDefault),
 				},
 				Spec: v2alpha1.IPPoolSpec{
-					SubnetId: defaultSubnetID,
-					CIDR:     subnet.CIDR.String(),
-					VPCId:    subnet.VirtualNetworkID,
+					SubnetId:              defaultSubnetID,
+					CIDR:                  subnet.CIDR.String(),
+					VPCId:                 subnet.VirtualNetworkID,
+					NodeMaxAboveWatermark: 8,
+					NodePreAllocate:       2,
+					Watermark:             "0.9",
 				},
 			}
 			_, err := k8sManager.alphaClient.CiliumPodIPPools().Create(context.TODO(), defaultPool, v1.CreateOptions{})
