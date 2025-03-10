@@ -157,19 +157,29 @@ func (m *Manager) GetIPPoolForPod(owner, resourceName string) (pool string, err 
 		return "", &ResourceNotFound{Resource: "Pod", Namespace: namespace, Name: name}
 	}
 
-	log.Infof("Device_plugin output %v", pod.Spec.Containers[0].Resources)
+	log.Debugf("Device_plugin output %v", pod.Spec.Containers[0].Resources)
 
 	if ipPool, hasAnnotation := pod.Annotations[annotation.IPAMPoolKey]; hasAnnotation {
 		return ipPool, nil
 	}
 
-	if _, ok := pod.Spec.Containers[0].Resources.Requests[v1.ResourceName(resourceName)]; !ok {
-		// device-plugin resource not injected, switch default
-		return ipamOption.PoolDefault, nil
+	devicePluginInjected := false
+	for _, container := range pod.Spec.Containers {
+		if _, ok := container.Resources.Requests[v1.ResourceName(resourceName)]; ok {
+			// find device-plugin resource injected, not switch default
+			if devicePluginInjected {
+				return "", fmt.Errorf("multiple device-plugin resources injected in pod %q", namespace+"/"+name)
+			}
+			devicePluginInjected = true
+		}
 	}
 
-	// Fallback to not specified
-	return ipamOption.PoolNotSpecified, nil
+	if devicePluginInjected {
+		return ipamOption.PoolNotSpecified, nil
+	}
+
+	// device_plugin not injected, switch default
+	return ipamOption.PoolDefault, nil
 }
 
 func (m *Manager) GetIPPolicyForPod(owner string) (string, int, error) {

@@ -2712,7 +2712,6 @@ func (c *DaemonConfig) K8sNetworkPolicyEnabled() bool {
 }
 
 func (c *DaemonConfig) GetNodeLabelForProject() string {
-	log.Infof("Acquired node label for project %s", c.NodeLabelForProject)
 	return c.NodeLabelForProject
 }
 
