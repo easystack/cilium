@@ -240,13 +240,20 @@ func (lw *endpointsListerWatcher) Watch(opts metav1.ListOptions) (watch.Interfac
 }
 
 func transformEndpoint(obj any) (any, error) {
-	switch obj := obj.(type) {
+	switch concreteObj := obj.(type) {
 	case *slim_corev1.Endpoints:
-		return ParseEndpoints(obj), nil
+		return ParseEndpoints(concreteObj), nil
 	case *slim_discoveryv1.EndpointSlice:
-		return ParseEndpointSliceV1(obj), nil
+		return ParseEndpointSliceV1(concreteObj), nil
 	case *slim_discoveryv1beta1.EndpointSlice:
-		return ParseEndpointSliceV1Beta1(obj), nil
+		return ParseEndpointSliceV1Beta1(concreteObj), nil
+	case cache.DeletedFinalStateUnknown:
+		log.Warningf("transformEndpoint: unexpected DeletedFinalStateUnknown object: %v", concreteObj)
+		endpoint, ok := concreteObj.Obj.(*slim_corev1.Endpoints)
+		if !ok {
+			return nil, fmt.Errorf("unknown object type %T", concreteObj.Obj)
+		}
+		return endpoint, nil
 	default:
 		return nil, fmt.Errorf("%T not a known endpoint or endpoint slice object", obj)
 	}
