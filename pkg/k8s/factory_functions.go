@@ -1180,3 +1180,53 @@ func ObjToCEC(obj interface{}) *cilium_v2.CiliumEnvoyConfig {
 		Warn("Ignoring invalid v2 Cilium Envoy Config")
 	return nil
 }
+
+func TransformToCiliumPod(obj interface{}) (interface{}, error) {
+	switch concreteObj := obj.(type) {
+	case *slim_corev1.Pod:
+		p := &slim_corev1.Pod{
+			TypeMeta: concreteObj.TypeMeta,
+			ObjectMeta: slim_metav1.ObjectMeta{
+				Name:            concreteObj.Name,
+				Namespace:       concreteObj.Namespace,
+				ResourceVersion: concreteObj.ResourceVersion,
+			},
+			Spec: slim_corev1.PodSpec{
+				NodeName:   concreteObj.Spec.NodeName,
+				Containers: concreteObj.Spec.Containers,
+			},
+			Status: slim_corev1.PodStatus{
+				Conditions: concreteObj.Status.Conditions,
+			},
+		}
+		*concreteObj = slim_corev1.Pod{}
+		return p, nil
+	case cache.DeletedFinalStateUnknown:
+		pod, ok := concreteObj.Obj.(*slim_corev1.Pod)
+		if !ok {
+			return nil, fmt.Errorf("unknown object type %T", concreteObj.Obj)
+		}
+		dfsu := cache.DeletedFinalStateUnknown{
+			Key: concreteObj.Key,
+			Obj: &slim_corev1.Pod{
+				TypeMeta: pod.TypeMeta,
+				ObjectMeta: slim_metav1.ObjectMeta{
+					Name:            pod.Name,
+					Namespace:       pod.Namespace,
+					ResourceVersion: pod.ResourceVersion,
+				},
+				Spec: slim_corev1.PodSpec{
+					NodeName: pod.Spec.NodeName,
+				},
+				Status: slim_corev1.PodStatus{
+					Conditions: pod.Status.Conditions,
+				},
+			},
+		}
+		// Small GC optimization
+		*pod = slim_corev1.Pod{}
+		return dfsu, nil
+	default:
+		return nil, fmt.Errorf("unknown object type %T", concreteObj)
+	}
+}
