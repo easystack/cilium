@@ -90,13 +90,7 @@ type nodeStore struct {
 
 	csipMgr *staticip.Manager
 
-	devicePluginManager           *deviceplugin.ENIIPDevicePlugin
-	devicePluginResource          *deviceplugin.Resource
-	projectLabelGetter            utils.NodeLabelForProjectConfiguration
-	metadata                      *ipamMetadata.Manager
-	devicePluginServerInitialized bool
-
-	projectLabelCh chan string
+	metadata *ipamMetadata.Manager
 }
 
 // newNodeStore initializes a new store which reflects the CiliumNode custom
@@ -112,8 +106,6 @@ func newNodeStore(nodeName string, conf Configuration, owner Owner, clientset cl
 		clientset:          clientset,
 		ipsToPool:          map[string]string{},
 		metadata:           metadata,
-		projectLabelGetter: projectLabelGetter,
-		projectLabelCh:     make(chan string),
 	}
 
 	if csipMgr != nil {
@@ -132,51 +124,9 @@ func newNodeStore(nodeName string, conf Configuration, owner Owner, clientset cl
 	}
 	store.refreshTrigger = t
 
-	store.devicePluginResource = &deviceplugin.Resource{
-		UpdateSignal: make(chan struct{}),
-		Count:        0,
-	}
-
-	store.devicePluginManager = deviceplugin.NewENIIPDevicePlugin(store.devicePluginResource, context.TODO(), func(project string) int {
-
-		nonDevicePluginCount, err := store.getNonDevicePluginPodCount(project)
-		log.Infof("nonDevicePluginCount: %d", nonDevicePluginCount)
-		if err != nil {
-			log.Errorf("Failed to get non device plugin pod count: %s", err)
-			return 0
-		}
-
-		reportCount := store.acquireResourceCount() - nonDevicePluginCount
-
-		return reportCount
-	}, store.projectLabelCh)
-
 	// Create the CiliumNode custom resource. This call will block until
 	// the custom resource has been created
 	owner.UpdateCiliumNodeResource()
-	go func() {
-
-		tick := time.Tick(time.Second * 30)
-		var projectName string
-		for {
-			select {
-			case <-tick:
-				if store.ownNode != nil {
-					if p, ok := store.ownNode.Labels[store.projectLabelGetter.GetNodeLabelForProject()]; ok && p != "" && p != projectName {
-						projectName = p
-						startDpServer.Do(func() {
-							err := store.devicePluginManager.Serve(projectName)
-							if err != nil {
-								log.Fatalf("Failed to serve device plugin server, error: %s", err)
-							}
-							log.Infof("Device plugin server initialized.")
-						})
-						store.projectLabelCh <- projectName
-					}
-				}
-			}
-		}
-	}()
 
 	apiGroup := "cilium/v2::CiliumNode"
 	ciliumNodeSelector := fields.ParseSelectorOrDie("metadata.name=" + nodeName)
@@ -601,14 +551,6 @@ func (n *nodeStore) updateLocalNodeResource(node *ciliumv2.CiliumNode) {
 	}
 	n.csipMgr.UpdateLocalCiliumNode(node.DeepCopy())
 
-	if availableCount != n.devicePluginResource.Count {
-		n.devicePluginResource.Count = availableCount
-		if n.devicePluginServerInitialized {
-			n.devicePluginResource.UpdateSignal <- struct{}{}
-		}
-		log.Infof("Updated eni-ip count: %d", n.devicePluginResource.Count)
-	}
-
 	if releaseUpstreamSyncNeeded {
 		n.refreshTrigger.TriggerWithReason("excess IP release")
 	}
@@ -675,10 +617,6 @@ func (n *nodeStore) addAllocator(allocator *crdAllocator) {
 	n.mutex.Lock()
 	n.allocators = append(n.allocators, allocator)
 	n.mutex.Unlock()
-}
-
-func (n *nodeStore) acquireResourceCount() int {
-	return n.devicePluginResource.Count
 }
 
 // allocate checks if a particular IP can be allocated or return an error

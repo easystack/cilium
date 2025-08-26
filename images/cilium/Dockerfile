@@ -57,6 +57,10 @@ RUN --mount=type=bind,readwrite,target=/go/src/github.com/cilium/cilium --mount=
     DESTDIR=/tmp/install/${TARGETOS}/${TARGETARCH} install-bash-completion licenses-all && \
     mv LICENSE.all /tmp/install/${TARGETOS}/${TARGETARCH}/LICENSE.all
 
+
+RUN --mount=type=bind,readwrite,target=/go/src/github.com/cilium/cilium --mount=target=/root/.cache,type=cache --mount=target=/go/pkg,type=cache \
+    CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build  -ldflags "-s -w" -o /out/cilium-dp  /go/src/github.com/cilium/cilium/plugins/cilium-dp
+
 COPY images/cilium/init-container.sh \
      plugins/cilium-cni/install-plugin.sh \
      plugins/cilium-cni/cni-uninstall.sh \
@@ -86,7 +90,10 @@ ENV HUBBLE_SERVER=unix:///var/run/cilium/hubble.sock
 COPY --from=hubble /out/${TARGETOS}/${TARGETARCH}/bin/hubble /usr/bin/hubble
 COPY --from=hubble /out/linux/bash_completion /etc/bash_completion.d/hubble
 
+
+RUN apt update && apt install -y iptables=1.8.7-1ubuntu5.2
 COPY --from=builder /tmp/install/${TARGETOS}/${TARGETARCH} /
+COPY --from=builder /out/cilium-dp /usr/bin/cilium-dp
 WORKDIR /home/cilium
 
 ENV INITSYSTEM="SYSTEMD"
